@@ -28,11 +28,6 @@ export const UserS8 = sequelize.define(
       allowNull: true,
       field: 'microsoft_id'
     },
-    loginType: {
-      type: DataTypes.INTEGER,
-      allowNull: true,
-      field: 'login_type'
-    },
     isActive: {
       type: DataTypes.BOOLEAN,
       defaultValue: true,
