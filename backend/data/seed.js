@@ -294,11 +294,15 @@ export async function seedDatabase({ force = false } = {}) {
 
   const results = [];
   results.push(await fill(Role, roles));
-  const s8Users = users.map(({ name, email, status }) => ({
-    displayName: name,
-    email,
-    isActive: status === 'Active'
-  }));
+  const s8Users = users.map(({ name, email, status }) => {
+    const [firstName, ...rest] = (name || '').split(' ');
+    return {
+      firstName: firstName || null,
+      lastName: rest.join(' ') || null,
+      email,
+      isActive: status === 'Active'
+    };
+  });
   results.push(await fill(UserS8, s8Users));
 
   results.push(await fill(Workflow, workflows));

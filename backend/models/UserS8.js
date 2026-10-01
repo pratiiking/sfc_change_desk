@@ -9,20 +9,15 @@ export const UserS8 = sequelize.define(
       primaryKey: true,
       autoIncrement: true
     },
-    displayName: {
+    firstName: {
       type: DataTypes.STRING,
       allowNull: true,
-      field: 'display_name'
+      field: 'first_name'
     },
-    givenName: {
+    lastName: {
       type: DataTypes.STRING,
       allowNull: true,
-      field: 'given_name'
-    },
-    familyName: {
-      type: DataTypes.STRING,
-      allowNull: true,
-      field: 'family_name'
+      field: 'last_name'
     },
     email: {
       type: DataTypes.STRING,
