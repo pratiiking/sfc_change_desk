@@ -4,7 +4,7 @@ import { ChangeManagerCategory, ChangeImplementerCategory } from '../models/inde
 import { Op } from 'sequelize';
 import { sequelize } from '../config/database.js';
 
-import { ROLE_ID_TO_NAME as ROLE_NAME_MAP, APP_ROLE_MAP } from '../config/constants.js';
+import { ROLE_ID_TO_NAME as ROLE_NAME_MAP, APP_ROLE_MAP, ROLE } from '../config/constants.js';
 
 export class IdentityResolver {
   static keyCache = new Map();
@@ -175,7 +175,7 @@ export class IdentityResolver {
    */
   static async _buildIdentityDTO(changeUser, employeeRecord = null) {
     const email = changeUser.email.trim().toLowerCase();
-    const roleId = changeUser.roleId || 'role-4';
+    const roleId = changeUser.roleId || ROLE.REQUESTER;
     const roleName = changeUser.roleName || ROLE_NAME_MAP[roleId] || 'Requester';
     const applicationRole = APP_ROLE_MAP[roleId] || 'REQUESTER';
 
@@ -239,15 +239,15 @@ export class IdentityResolver {
       role: roleName,
       roles: rolesList,
       rolesList: assignedRoleIds,
-      isSuperAdmin: assignedRoleIds.includes('role-1'),
-      isChangeAdmin: assignedRoleIds.includes('role-1') || assignedRoleIds.includes('role-2') || assignedRoleIds.includes('role-2-change'),
-      isPreSpendAdmin: assignedRoleIds.includes('role-1') || assignedRoleIds.includes('role-2-prespend'),
-      isTravelAdmin: assignedRoleIds.includes('role-1') || assignedRoleIds.includes('role-2-travel'),
-      isChangeManager: assignedRoleIds.includes('role-3') || cmCategories.length > 0,
-      isChangeImplementer: assignedRoleIds.includes('role-5') || ciCategories.length > 0,
-      isBoardMember: assignedRoleIds.includes('role-6'),
+      isSuperAdmin: assignedRoleIds.includes(ROLE.SUPER_ADMIN),
+      isChangeAdmin: assignedRoleIds.includes(ROLE.SUPER_ADMIN) || assignedRoleIds.includes(ROLE.ADMIN_LEGACY) || assignedRoleIds.includes(ROLE.CHANGE_ADMIN),
+      isPreSpendAdmin: assignedRoleIds.includes(ROLE.SUPER_ADMIN) || assignedRoleIds.includes(ROLE.PRESPEND_ADMIN),
+      isTravelAdmin: assignedRoleIds.includes(ROLE.SUPER_ADMIN) || assignedRoleIds.includes(ROLE.TRAVEL_ADMIN),
+      isChangeManager: assignedRoleIds.includes(ROLE.CHANGE_MANAGER) || cmCategories.length > 0,
+      isChangeImplementer: assignedRoleIds.includes(ROLE.CHANGE_IMPLEMENTER) || ciCategories.length > 0,
+      isBoardMember: assignedRoleIds.includes(ROLE.BOARD),
       status: changeUser.status || 'Active',
-      isExplicitRole: roleId !== 'role-4',
+      isExplicitRole: roleId !== ROLE.REQUESTER,
       employeeBusinessId: authoritativeEmpId,
       employeeId: authoritativeEmpId,
       empId: authoritativeEmpId,
@@ -261,7 +261,7 @@ export class IdentityResolver {
       },
       cmCategories,
       ciCategories,
-      categoryIds: roleId === 'role-5' ? ciCategories : cmCategories,
+      categoryIds: roleId === ROLE.CHANGE_IMPLEMENTER ? ciCategories : cmCategories,
       aliases: keysToCheck,
       isInUserTable
     };

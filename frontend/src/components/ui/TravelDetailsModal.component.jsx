@@ -16,6 +16,7 @@ import {
   ArrowRight,
   Check
 } from 'lucide-react';
+import { ROLE } from '../../lib/permissions.lib';
 
 const MODE_ICONS = {
   Flight: Plane,
@@ -60,9 +61,9 @@ export default function TravelDetailsModal({ item, onClose, onApprove, onReject,
 
   const roleName = (user?.role || '').toLowerCase();
   const roleId = user?.roleId || '';
-  const isSuperAdmin = roleId === 'role-1' || roleName.includes('super');
+  const isSuperAdmin = roleId === ROLE.SUPER_ADMIN || roleName.includes('super');
   const isBoardUser = roleId === 'role-board' || roleName.includes('board');
-  const isTravelAdmin = roleId === 'role-2-travel' || (roleName.includes('admin') && roleName.includes('travel'));
+  const isTravelAdmin = roleId === ROLE.TRAVEL_ADMIN || (roleName.includes('admin') && roleName.includes('travel'));
 
   const status = item.status || 'Pending Approval';
   const isApproved = status.toLowerCase().includes('approved') || status.toLowerCase().includes('booked') || status.toLowerCase().includes('ticketed');

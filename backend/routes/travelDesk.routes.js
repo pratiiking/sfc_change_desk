@@ -1,6 +1,7 @@
 import express from 'express';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { requireOrganizationScopeRole, requireWorklistViewRole } from '../middlewares/auth.middleware.js';
+import { ROLE } from '../config/constants.js';
 import {
   createTravelService,
   getTravelRequestsService,
@@ -11,7 +12,7 @@ const router = express.Router();
 
 router.get(
   '/',
-  requireWorklistViewRole(['Admin', 'Super Admin', 'Travel Admin', 'role-1', 'role-2', 'role-2-travel', 'role-board', 'role-6', 'Board Member', 'Board']),
+  requireWorklistViewRole(['Admin', 'Super Admin', 'Travel Admin', ROLE.SUPER_ADMIN, ROLE.ADMIN_LEGACY, ROLE.TRAVEL_ADMIN, 'role-board', ROLE.BOARD, 'Board Member', 'Board']),
   requireOrganizationScopeRole,
   asyncHandler(async (req, res) => {
     const isWorklist = req.query.view === 'worklist';

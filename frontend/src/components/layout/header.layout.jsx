@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Search, Menu } from 'lucide-react';
+import { ROLE } from '../../lib/permissions.lib';
 
 function Header({
   activeRoute = 'Dashboard',
@@ -139,7 +140,7 @@ function Header({
                 </strong>
                 {(() => {
                   const roleStr = (user?.role || user?.applicationRole || '').trim().toLowerCase();
-                  const isRequester = roleStr === 'requester' || user?.roleId === 'role-4';
+                  const isRequester = roleStr === 'requester' || user?.roleId === ROLE.REQUESTER;
                   if (isRequester || !user?.role) return null;
                   return (
                     <span className="mt-[0.15rem] block text-[0.7rem] text-muted-foreground">

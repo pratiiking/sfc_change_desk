@@ -15,7 +15,7 @@ import { Employee } from '../models/Employee.js';
 import { UserAppRole } from '../models/UserAppRole.js';
 import { IdentityResolver } from './identityResolver.service.js';
 import { checkUserInUserTable } from './auth.service.js';
-import { isRestrictedAction } from '../config/constants.js';
+import { isRestrictedAction, ROLE } from '../config/constants.js';
 import { APPROVAL_STAGE, isManagerReviewStage, isStage2ReviewStage, initialApprovalState } from '../config/approvalWorkflow.js';
 import { addAuditLog } from './auditLog.service.js';
 import { buildDateFilterClause } from '../utils/dateFilterUtils.js';
@@ -108,9 +108,9 @@ export const getFilteredChangeRequests = async ({
       const identityRes = await IdentityResolver.resolveByKey(actingUserId);
       const identity = identityRes.status === 'SUCCESS' ? identityRes.identity : null;
       const rolesList = identity?.rolesList || (identity?.roleId ? [identity.roleId] : []);
-      const isSuperOrAdmin = rolesList.includes('role-1') || rolesList.includes('role-2') || rolesList.includes('role-2-change') || identity?.isSuperAdmin || identity?.isChangeAdmin;
-      const isChangeManager = rolesList.includes('role-3') || Boolean(identity?.isChangeManager) || (identity?.cmCategories && identity.cmCategories.length > 0);
-      const isChangeImplementer = rolesList.includes('role-5') || Boolean(identity?.isChangeImplementer) || (identity?.ciCategories && identity.ciCategories.length > 0);
+      const isSuperOrAdmin = rolesList.includes(ROLE.SUPER_ADMIN) || rolesList.includes(ROLE.ADMIN_LEGACY) || rolesList.includes(ROLE.CHANGE_ADMIN) || identity?.isSuperAdmin || identity?.isChangeAdmin;
+      const isChangeManager = rolesList.includes(ROLE.CHANGE_MANAGER) || Boolean(identity?.isChangeManager) || (identity?.cmCategories && identity.cmCategories.length > 0);
+      const isChangeImplementer = rolesList.includes(ROLE.CHANGE_IMPLEMENTER) || Boolean(identity?.isChangeImplementer) || (identity?.ciCategories && identity.ciCategories.length > 0);
 
       // Rule: No user sees their own requests in My Worklist
       if (!organizationScope) {
@@ -343,9 +343,9 @@ export const getFilteredChangeRequests = async ({
 
     const roleId = identityRes.status === 'SUCCESS' ? identityRes.identity.roleId : null;
     const roleName = String(identityRes.identity?.role || '').toLowerCase();
-    isSuperOrAdmin = roleId === 'role-1' || roleId === 'role-2' || roleId === 'role-2-change' || roleName.includes('super') || roleName.includes('change desk admin') || roleName.includes('change admin') || (roleName.includes('admin') && !roleName.includes('travel') && !roleName.includes('spend'));
-    isChangeManager = roleId === 'role-3' || roleName.includes('manager') || (identityRes.identity?.cmCategories && identityRes.identity.cmCategories.length > 0);
-    isChangeImplementer = roleId === 'role-5' || roleName.includes('implementer') || (identityRes.identity?.ciCategories && identityRes.identity.ciCategories.length > 0);
+    isSuperOrAdmin = roleId === ROLE.SUPER_ADMIN || roleId === ROLE.ADMIN_LEGACY || roleId === ROLE.CHANGE_ADMIN || roleName.includes('super') || roleName.includes('change desk admin') || roleName.includes('change admin') || (roleName.includes('admin') && !roleName.includes('travel') && !roleName.includes('spend'));
+    isChangeManager = roleId === ROLE.CHANGE_MANAGER || roleName.includes('manager') || (identityRes.identity?.cmCategories && identityRes.identity.cmCategories.length > 0);
+    isChangeImplementer = roleId === ROLE.CHANGE_IMPLEMENTER || roleName.includes('implementer') || (identityRes.identity?.ciCategories && identityRes.identity.ciCategories.length > 0);
 
     const identity = identityRes.status === 'SUCCESS' ? identityRes.identity : null;
     cmCatIds = new Set(identity?.cmCategories ?? []);
@@ -535,7 +535,7 @@ const nextChangeRequestId = async (tx) => {
 
 export async function getVotersForCategory(categoryId, tx) {
   const adminRoles = await UserAppRole.findAll({
-    where: { roleId: { [Op.in]: ['role-1', 'role-2', 'role-2-change'] } },
+    where: { roleId: { [Op.in]: [ROLE.SUPER_ADMIN, ROLE.ADMIN_LEGACY, ROLE.CHANGE_ADMIN] } },
     transaction: tx
   });
   const adminKeys = adminRoles.map((r) => r.userKey);
@@ -551,7 +551,7 @@ export async function getVotersForCategory(categoryId, tx) {
       const cmRoles = await UserAppRole.findAll({
         where: {
           userKey: { [Op.in]: cmUserIds },
-          roleId: 'role-3'
+          roleId: ROLE.CHANGE_MANAGER
         },
         transaction: tx
       });
@@ -770,7 +770,7 @@ export const createChangeRequestService = async (payload = {}) => {
   if (isRestrictedAction(actionValue, payload.subcategoryId)) {
     const isSuperAdmin = Boolean(
       requesterUser?.isSuperAdmin ||
-      requesterUser?.roleId === 'role-1' ||
+      requesterUser?.roleId === ROLE.SUPER_ADMIN ||
       requesterUser?.role === 'Super Admin' ||
       requesterUser?.role === 'ChangeDesk Super Admin'
     );
@@ -1021,9 +1021,9 @@ export const applyWorklistActionService = async ({ id, action, rejectionReason =
     throw err;
   }
   const rolesList = identity?.rolesList || [roleId].filter(Boolean);
-  const isAdminOrSuperAdmin = rolesList.includes('role-1') || rolesList.includes('role-2') || rolesList.includes('role-2-change') || identity?.isSuperAdmin || identity?.isChangeAdmin;
-  const isChangeManager = rolesList.includes('role-3') || Boolean(identity?.isChangeManager) || (identity?.cmCategories && identity.cmCategories.length > 0);
-  const isChangeImplementer = rolesList.includes('role-5') || Boolean(identity?.isChangeImplementer) || (identity?.ciCategories && identity.ciCategories.length > 0);
+  const isAdminOrSuperAdmin = rolesList.includes(ROLE.SUPER_ADMIN) || rolesList.includes(ROLE.ADMIN_LEGACY) || rolesList.includes(ROLE.CHANGE_ADMIN) || identity?.isSuperAdmin || identity?.isChangeAdmin;
+  const isChangeManager = rolesList.includes(ROLE.CHANGE_MANAGER) || Boolean(identity?.isChangeManager) || (identity?.cmCategories && identity.cmCategories.length > 0);
+  const isChangeImplementer = rolesList.includes(ROLE.CHANGE_IMPLEMENTER) || Boolean(identity?.isChangeImplementer) || (identity?.ciCategories && identity.ciCategories.length > 0);
   const cmAssignedCategoryIds = identityRes.status === 'SUCCESS' ? (identityRes.identity.cmCategories || []) : [];
 
   if (action === 'implement') {
@@ -1467,7 +1467,7 @@ export const addChangeRequestCommentService = async ({ id, commentText, actorId 
   const actorName = identityRes.status === 'SUCCESS' ? identityRes.identity.displayName : 'User';
   const actorRoleName = identityRes.status === 'SUCCESS' ? identityRes.identity.role : 'User';
   const roleId = identityRes.status === 'SUCCESS' ? identityRes.identity.roleId : null;
-  const isAdminOrSuperAdmin = roleId === 'role-1' || roleId === 'role-2' || roleId === 'role-2-change';
+  const isAdminOrSuperAdmin = roleId === ROLE.SUPER_ADMIN || roleId === ROLE.ADMIN_LEGACY || roleId === ROLE.CHANGE_ADMIN;
   if (!isAdminOrSuperAdmin) {
     const err = new Error('Unauthorized: Only Admins and Super Admins can post comments.');
     err.statusCode = 403;

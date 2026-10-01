@@ -3,6 +3,7 @@
 // ────────────────────────────────────────────────────────────────
 import crypto from 'node:crypto';
 import jwt from 'jsonwebtoken';
+import { ROLE } from '../config/constants.js';
 import { IdentityResolver } from './identityResolver.service.js';
 
 // Single-use exchange codes for the SSO redirect: the browser lands with a short-lived
@@ -75,13 +76,13 @@ export const publicUser = (identity) => {
     roleId: u.roleId || null,
     roles: u.roles || (u.role ? [u.role] : []),
     rolesList: u.rolesList || (u.roleId ? [u.roleId] : []),
-    isSuperAdmin: Boolean(u.isSuperAdmin || u.roleId === 'role-1' || u.roleName === 'Super Admin' || u.role === 'Super Admin' || u.role === 'ChangeDesk Super Admin' || u.roleName === 'ChangeDesk Super Admin'),
-    isChangeAdmin: Boolean(u.isChangeAdmin || (u.rolesList && (u.rolesList.includes('role-1') || u.rolesList.includes('role-2') || u.rolesList.includes('role-2-change')))),
-    isPreSpendAdmin: Boolean(u.isPreSpendAdmin || (u.rolesList && (u.rolesList.includes('role-1') || u.rolesList.includes('role-2-prespend')))),
-    isTravelAdmin: Boolean(u.isTravelAdmin || (u.rolesList && (u.rolesList.includes('role-1') || u.rolesList.includes('role-2-travel')))),
-    isChangeManager: Boolean(u.isChangeManager || (u.rolesList && u.rolesList.includes('role-3')) || (u.cmCategories && u.cmCategories.length > 0)),
-    isChangeImplementer: Boolean(u.isChangeImplementer || (u.rolesList && u.rolesList.includes('role-5')) || (u.ciCategories && u.ciCategories.length > 0)),
-    isBoardMember: Boolean(u.isBoardMember || (u.rolesList && u.rolesList.includes('role-6'))),
+    isSuperAdmin: Boolean(u.isSuperAdmin || u.roleId === ROLE.SUPER_ADMIN || u.roleName === 'Super Admin' || u.role === 'Super Admin' || u.role === 'ChangeDesk Super Admin' || u.roleName === 'ChangeDesk Super Admin'),
+    isChangeAdmin: Boolean(u.isChangeAdmin || (u.rolesList && (u.rolesList.includes(ROLE.SUPER_ADMIN) || u.rolesList.includes(ROLE.ADMIN_LEGACY) || u.rolesList.includes(ROLE.CHANGE_ADMIN)))),
+    isPreSpendAdmin: Boolean(u.isPreSpendAdmin || (u.rolesList && (u.rolesList.includes(ROLE.SUPER_ADMIN) || u.rolesList.includes(ROLE.PRESPEND_ADMIN)))),
+    isTravelAdmin: Boolean(u.isTravelAdmin || (u.rolesList && (u.rolesList.includes(ROLE.SUPER_ADMIN) || u.rolesList.includes(ROLE.TRAVEL_ADMIN)))),
+    isChangeManager: Boolean(u.isChangeManager || (u.rolesList && u.rolesList.includes(ROLE.CHANGE_MANAGER)) || (u.cmCategories && u.cmCategories.length > 0)),
+    isChangeImplementer: Boolean(u.isChangeImplementer || (u.rolesList && u.rolesList.includes(ROLE.CHANGE_IMPLEMENTER)) || (u.ciCategories && u.ciCategories.length > 0)),
+    isBoardMember: Boolean(u.isBoardMember || (u.rolesList && u.rolesList.includes(ROLE.BOARD))),
     applicationRole: u.applicationRole || null,
     status: 'Active',
     cmCategories: u.cmCategories || [],

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { X, IndianRupee, FileText, CheckCircle2, Clock, XCircle, Building2, Calendar, AlertTriangle, ShieldCheck, Check } from 'lucide-react';
+import { ROLE } from '../../lib/permissions.lib';
 
 const money = (value) => Number(value || 0).toLocaleString('en-IN', { style: 'currency', currency: 'INR' });
 
@@ -39,9 +40,9 @@ export default function PreSpendDetailsModal({ item, onClose, onApprove, onRejec
   const roleName = (user?.role || '').toLowerCase();
   const roleId = user?.roleId || '';
   const rawRoleIds = Array.isArray(user?.rolesList) ? user.rolesList : [];
-  const isSuperAdmin = Boolean(user?.isSuperAdmin || roleId === 'role-1' || rawRoleIds.includes('role-1') || roleName.includes('super'));
-  const isBoardUser = Boolean(user?.isBoardMember || roleId === 'role-board' || roleId === 'role-6' || rawRoleIds.includes('role-6') || rawRoleIds.includes('role-board') || roleName.includes('board'));
-  const isPreSpendAdmin = Boolean(user?.isPreSpendAdmin || roleId === 'role-2-prespend' || rawRoleIds.includes('role-2-prespend') || (roleName.includes('admin') && (roleName.includes('spend') || roleName.includes('prespend'))));
+  const isSuperAdmin = Boolean(user?.isSuperAdmin || roleId === ROLE.SUPER_ADMIN || rawRoleIds.includes(ROLE.SUPER_ADMIN) || roleName.includes('super'));
+  const isBoardUser = Boolean(user?.isBoardMember || roleId === 'role-board' || roleId === ROLE.BOARD || rawRoleIds.includes(ROLE.BOARD) || rawRoleIds.includes('role-board') || roleName.includes('board'));
+  const isPreSpendAdmin = Boolean(user?.isPreSpendAdmin || roleId === ROLE.PRESPEND_ADMIN || rawRoleIds.includes(ROLE.PRESPEND_ADMIN) || (roleName.includes('admin') && (roleName.includes('spend') || roleName.includes('prespend'))));
 
   const status = item.status || 'Pending Approval';
   const isApproved = status.toLowerCase().includes('approved') || status.toLowerCase().includes('procured');

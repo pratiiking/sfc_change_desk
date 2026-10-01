@@ -6,7 +6,7 @@ import { sequelize } from '../config/database.js';
 export const Role = sequelize.define(
   'Role',
   {
-    id: { type: DataTypes.STRING, primaryKey: true },
+    id: { type: DataTypes.UUID, primaryKey: true },
     name: { type: DataTypes.STRING, allowNull: false },
     description: { type: DataTypes.TEXT },
     permissions: { type: DataTypes.JSONB, defaultValue: [] }

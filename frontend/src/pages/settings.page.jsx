@@ -5,6 +5,7 @@ import FilterBar from '../components/ui/filterBar.component';
 import { ExportButtonGroup, LoadingSpinner, Pagination } from '../components/ui/primitives.component';
 import { apiFetch } from '../lib/apiFetch.lib';
 import { useToast } from '../context/ToastContext';
+import { ROLE } from '../lib/permissions.lib';
 
 /** Cleanly format raw SQL/ISO timestamps into '21 Sep 2026, 12:48 PM' (showing date, hour, and minute only) */
 const formatAuditTimestamp = (raw) => {
@@ -26,8 +27,8 @@ const formatAuditTimestamp = (raw) => {
 function SettingsPage({ user }) {
   const queryClient = useQueryClient();
   const toast = useToast();
-  const isSuperAdmin = user?.roleId === 'role-1' || (user?.role || '').toLowerCase() === 'super admin';
-  const isRequester = !isSuperAdmin && (user?.roleId === 'role-4' || user?.role === 'Requester');
+  const isSuperAdmin = user?.roleId === ROLE.SUPER_ADMIN || (user?.role || '').toLowerCase() === 'super admin';
+  const isRequester = !isSuperAdmin && (user?.roleId === ROLE.REQUESTER || user?.role === 'Requester');
 
   const [isSavingUser, setIsSavingUser] = useState(false);
   const [isLoadingCategories, setIsLoadingCategories] = useState(false);
@@ -129,13 +130,13 @@ function SettingsPage({ user }) {
   const auditLogs = auditLogsData?.data || [];
   const auditLogsTotal = auditLogsData?.total || 0;
   const ROLE_TO_ID = {
-    'Super Admin': 'role-1',
-    'Change Desk Admin': 'role-2-change',
-    'Pre-Spend Admin': 'role-2-prespend',
-    'Travel Desk Admin': 'role-2-travel',
-    'Change Manager': 'role-3',
-    'Change Implementer': 'role-5',
-    'Board Member': 'role-6'
+    'Super Admin': ROLE.SUPER_ADMIN,
+    'Change Desk Admin': ROLE.CHANGE_ADMIN,
+    'Pre-Spend Admin': ROLE.PRESPEND_ADMIN,
+    'Travel Desk Admin': ROLE.TRAVEL_ADMIN,
+    'Change Manager': ROLE.CHANGE_MANAGER,
+    'Change Implementer': ROLE.CHANGE_IMPLEMENTER,
+    'Board Member': ROLE.BOARD
   };
 
   const ALL_ASSIGNABLE_ROLES = [
@@ -204,7 +205,7 @@ function SettingsPage({ user }) {
     setIsSavingUser(true);
 
     const primaryRoleName = assignedRoles[0];
-    const roleId = ROLE_TO_ID[primaryRoleName] || 'role-2-change';
+    const roleId = ROLE_TO_ID[primaryRoleName] || ROLE.CHANGE_ADMIN;
     const hasCM = assignedRoles.includes('Change Manager');
     const hasCI = assignedRoles.includes('Change Implementer');
 
@@ -312,7 +313,7 @@ function SettingsPage({ user }) {
     const assignedRoles = (newUser.roles && newUser.roles.length > 0) ? newUser.roles : [];
 
     const primaryRoleName = assignedRoles.length > 0 ? assignedRoles[0] : 'Requester';
-    const roleId = ROLE_TO_ID[primaryRoleName] || 'role-4';
+    const roleId = ROLE_TO_ID[primaryRoleName] || ROLE.REQUESTER;
     const hasCM = assignedRoles.includes('Change Manager') || newUser.selectedRoleToAdd === 'Change Manager';
     const hasCI = assignedRoles.includes('Change Implementer') || newUser.selectedRoleToAdd === 'Change Implementer';
     const allCategoryIds = Array.from(new Set([...(hasCM ? newUserCmCategories : []), ...(hasCI ? newUserCiCategories : [])]));

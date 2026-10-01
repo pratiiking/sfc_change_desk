@@ -1,5 +1,6 @@
 import { Op } from 'sequelize';
 import { APPROVAL_STAGE, isManagerReviewStage, isStage2ReviewStage, initialApprovalState } from '../config/approvalWorkflow.js';
+import { ROLE } from '../config/constants.js';
 import { TravelRequest } from '../models/TravelRequest.js';
 import { Employee } from '../models/Employee.js';
 import { sequelize, getNextRequestCode } from '../config/database.js';
@@ -338,9 +339,9 @@ export const getTravelRequestsService = async ({ user, userId, isWorklist = fals
       // silently undercount past the page size.
       if (!isWorklist) return 0;
 
-      const isSuperAdmin = user?.isSuperAdmin || user?.roleId === 'role-1' || (user?.role || '').toLowerCase().includes('super');
+      const isSuperAdmin = user?.isSuperAdmin || user?.roleId === ROLE.SUPER_ADMIN || (user?.role || '').toLowerCase().includes('super');
       const isBoardUser = user?.isBoardUser || user?.roleId === 'role-board' || (user?.role || '').toLowerCase().includes('board');
-      const isTravelAdmin = user?.isTravelAdmin || user?.roleId === 'role-2-travel' || ((user?.role || '').toLowerCase().includes('admin') && (user?.role || '').toLowerCase().includes('travel'));
+      const isTravelAdmin = user?.isTravelAdmin || user?.roleId === ROLE.TRAVEL_ADMIN || ((user?.role || '').toLowerCase().includes('admin') && (user?.role || '').toLowerCase().includes('travel'));
 
       if (!isBoardUser && !isSuperAdmin && !isTravelAdmin) {
         if (currentUserEmail) {
@@ -412,20 +413,20 @@ const handleTravelActionWithinTransaction = async ({ id, action, actionComment, 
     : [];
 
   const isBoardUser =
-    actorRoleId === 'role-6' ||
+    actorRoleId === ROLE.BOARD ||
     actorRoleId === 'role-board' ||
     actorRole.includes('board') ||
-    actorRolesList.some(r => r === 'role-6' || r === 'role-board' || r.includes('board'));
+    actorRolesList.some(r => r === ROLE.BOARD || r === 'role-board' || r.includes('board'));
 
   const isSuperAdmin =
-    actorRoleId === 'role-1' ||
+    actorRoleId === ROLE.SUPER_ADMIN ||
     actorRole.includes('super') ||
-    actorRolesList.some(r => r === 'role-1' || r.includes('super'));
+    actorRolesList.some(r => r === ROLE.SUPER_ADMIN || r.includes('super'));
 
   const isTravelAdmin =
-    actorRoleId === 'role-2-travel' ||
+    actorRoleId === ROLE.TRAVEL_ADMIN ||
     (actorRole.includes('admin') && actorRole.includes('travel')) ||
-    actorRolesList.some(r => r === 'role-2-travel' || (r.includes('admin') && r.includes('travel')));
+    actorRolesList.some(r => r === ROLE.TRAVEL_ADMIN || (r.includes('admin') && r.includes('travel')));
 
   // Integrity Rule: Users cannot approve/reject their own requests across all aliases
   const actorId = actor?.userKey || actor?.id || actor?.email || '';

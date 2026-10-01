@@ -9,7 +9,7 @@ import ModuleSwitcher from '../components/ui/moduleSwitcher.component';
 import { Pagination, LoadingSpinner, CommentPopupModal } from '../components/ui/primitives.component';
 import { apiFetch } from '../lib/apiFetch.lib';
 import { useWorklistActionableDots } from '../queries/worklist.queries';
-import { getAllowedWorklistModules } from '../lib/permissions.lib';
+import { getAllowedWorklistModules, ROLE } from '../lib/permissions.lib';
 
 function MyWorklistPage({ onNavigate, searchQuery = '', user, isOrgWorklist = false }) {
   const queryClient = useQueryClient();
@@ -20,13 +20,13 @@ function MyWorklistPage({ onNavigate, searchQuery = '', user, isOrgWorklist = fa
     ? user.roles.map(r => (typeof r === 'string' ? r : r.roleName || r.name || r.roleId || '').toLowerCase())
     : [roleName];
 
-  const isSuperAdmin = Boolean(user?.isSuperAdmin || roleId === 'role-1' || rawRoleIds.includes('role-1') || roleName.includes('super') || userRolesList.some(r => r.includes('super')));
-  const isBoardUser = Boolean(user?.isBoardMember || roleId === 'role-board' || roleId === 'role-6' || rawRoleIds.includes('role-6') || rawRoleIds.includes('role-board') || roleName.includes('board') || userRolesList.some(r => r.includes('board')));
-  const isTravelAdmin = Boolean(user?.isTravelAdmin || roleId === 'role-2-travel' || rawRoleIds.includes('role-2-travel') || (roleName.includes('admin') && roleName.includes('travel')) || userRolesList.some(r => r.includes('travel admin')));
-  const isPreSpendAdmin = Boolean(user?.isPreSpendAdmin || roleId === 'role-2-prespend' || rawRoleIds.includes('role-2-prespend') || (roleName.includes('admin') && (roleName.includes('spend') || roleName.includes('prespend'))) || userRolesList.some(r => r.includes('pre-spend') || r.includes('prespend')));
-  const isChangeAdmin = Boolean(user?.isChangeAdmin || roleId === 'role-2-change' || roleId === 'role-2' || rawRoleIds.includes('role-2-change') || rawRoleIds.includes('role-2') || userRolesList.some(r => r.includes('change desk admin') || r.includes('change admin')));
-  const isChangeManager = Boolean(user?.isChangeManager || roleId === 'role-3' || rawRoleIds.includes('role-3') || roleName.includes('manager') || userRolesList.some(r => r.includes('manager')) || (Array.isArray(user?.cmCategories) && user.cmCategories.length > 0));
-  const isImplementer = Boolean(user?.isChangeImplementer || roleId === 'role-5' || rawRoleIds.includes('role-5') || roleName.includes('implementer') || userRolesList.some(r => r.includes('implementer')) || (Array.isArray(user?.ciCategories) && user.ciCategories.length > 0));
+  const isSuperAdmin = Boolean(user?.isSuperAdmin || roleId === ROLE.SUPER_ADMIN || rawRoleIds.includes(ROLE.SUPER_ADMIN) || roleName.includes('super') || userRolesList.some(r => r.includes('super')));
+  const isBoardUser = Boolean(user?.isBoardMember || roleId === 'role-board' || roleId === ROLE.BOARD || rawRoleIds.includes(ROLE.BOARD) || rawRoleIds.includes('role-board') || roleName.includes('board') || userRolesList.some(r => r.includes('board')));
+  const isTravelAdmin = Boolean(user?.isTravelAdmin || roleId === ROLE.TRAVEL_ADMIN || rawRoleIds.includes(ROLE.TRAVEL_ADMIN) || (roleName.includes('admin') && roleName.includes('travel')) || userRolesList.some(r => r.includes('travel admin')));
+  const isPreSpendAdmin = Boolean(user?.isPreSpendAdmin || roleId === ROLE.PRESPEND_ADMIN || rawRoleIds.includes(ROLE.PRESPEND_ADMIN) || (roleName.includes('admin') && (roleName.includes('spend') || roleName.includes('prespend'))) || userRolesList.some(r => r.includes('pre-spend') || r.includes('prespend')));
+  const isChangeAdmin = Boolean(user?.isChangeAdmin || roleId === ROLE.CHANGE_ADMIN || roleId === ROLE.ADMIN_LEGACY || rawRoleIds.includes(ROLE.CHANGE_ADMIN) || rawRoleIds.includes(ROLE.ADMIN_LEGACY) || userRolesList.some(r => r.includes('change desk admin') || r.includes('change admin')));
+  const isChangeManager = Boolean(user?.isChangeManager || roleId === ROLE.CHANGE_MANAGER || rawRoleIds.includes(ROLE.CHANGE_MANAGER) || roleName.includes('manager') || userRolesList.some(r => r.includes('manager')) || (Array.isArray(user?.cmCategories) && user.cmCategories.length > 0));
+  const isImplementer = Boolean(user?.isChangeImplementer || roleId === ROLE.CHANGE_IMPLEMENTER || rawRoleIds.includes(ROLE.CHANGE_IMPLEMENTER) || roleName.includes('implementer') || userRolesList.some(r => r.includes('implementer')) || (Array.isArray(user?.ciCategories) && user.ciCategories.length > 0));
   const isApprover = isSuperAdmin || isBoardUser || isChangeAdmin || isTravelAdmin || isPreSpendAdmin || isChangeManager || isImplementer;
   const isRequester = !isApprover;
 

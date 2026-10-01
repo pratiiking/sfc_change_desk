@@ -13,6 +13,7 @@ import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import nodemailer from 'nodemailer';
 import jwt from 'jsonwebtoken';
+import { ROLE } from '../config/constants.js';
 import { Op } from 'sequelize';
 import { ChangeUser } from '../models/ChangeUser.js';
 
@@ -24,7 +25,7 @@ const fetchSuperAdminEmails = async () => {
       where: {
         status: { [Op.iLike]: 'Active' },
         [Op.or]: [
-          { roleId: 'role-1' },
+          { roleId: ROLE.SUPER_ADMIN },
           { roleName: { [Op.iLike]: '%super%' } }
         ]
       },

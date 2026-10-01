@@ -1,6 +1,7 @@
 import jwt from 'jsonwebtoken';
 import { verifyToken, publicUser } from '../services/auth.service.js';
 import { IdentityResolver } from '../services/identityResolver.service.js';
+import { ROLE } from '../config/constants.js';
 
 if (!process.env.JWT_SECRET) {
   throw new Error('JWT_SECRET environment variable is required and not set.');
@@ -49,7 +50,7 @@ export const requireRole = (allowedRoles = []) => {
 
     if (
       userRole === 'Super Admin' ||
-      userRoleId === 'role-1' ||
+      userRoleId === ROLE.SUPER_ADMIN ||
       appRole === 'SUPER_ADMIN' ||
       rolesList.includes(userRole) ||
       rolesList.includes(userRoleId) ||
@@ -71,7 +72,7 @@ export const requireRole = (allowedRoles = []) => {
 export const requireOrganizationScopeRole = (req, res, next) => {
   const scope = String(req.query.scope || '').toLowerCase();
   if (scope !== 'organization' && scope !== 'org') return next();
-  return requireRole(['Super Admin', 'role-1', 'role-board', 'role-6', 'Board Member', 'Board'])(req, res, next);
+  return requireRole(['Super Admin', ROLE.SUPER_ADMIN, 'role-board', ROLE.BOARD, 'Board Member', 'Board'])(req, res, next);
 };
 
 /**

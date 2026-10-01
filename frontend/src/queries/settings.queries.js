@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '../lib/apiFetch.lib';
+import { ROLE } from '../lib/permissions.lib';
 
 export function useSettingsUsers() {
   return useQuery({
@@ -30,7 +31,7 @@ export function useCreateUser() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({ newUser, newUserCategories, roleToIdMap }) => {
-      const roleId = roleToIdMap[newUser.role] || 'role-2-change';
+      const roleId = roleToIdMap[newUser.role] || ROLE.CHANGE_ADMIN;
       const res = await apiFetch('/settings/users', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -79,7 +80,7 @@ export function useUpdateUser() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({ editingUser, editingUserCategories, roleToIdMap }) => {
-      const roleId = roleToIdMap[editingUser.role] || 'role-2-change';
+      const roleId = roleToIdMap[editingUser.role] || ROLE.CHANGE_ADMIN;
       const res = await apiFetch(`/settings/users/${editingUser.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },

@@ -1,5 +1,6 @@
 import { DataTypes } from 'sequelize';
 import { sequelize } from '../config/database.js';
+import { ROLE } from '../config/constants.js';
 
 export const ChangeUser = sequelize.define(
   'ChangeUser',
@@ -27,9 +28,9 @@ export const ChangeUser = sequelize.define(
       defaultValue: ''
     },
     roleId: {
-      type: DataTypes.STRING,
+      type: DataTypes.UUID,
       allowNull: false,
-      defaultValue: 'role-4' // Default to standard Requester
+      defaultValue: ROLE.REQUESTER // Default to standard Requester
     },
     roleName: {
       type: DataTypes.STRING,

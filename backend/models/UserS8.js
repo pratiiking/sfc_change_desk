@@ -53,6 +53,11 @@ export const UserS8 = sequelize.define(
       allowNull: true,
       field: 'role'
     },
+    roleId: {
+      type: DataTypes.UUID,
+      allowNull: false,
+      field: 'role_id'
+    },
     createdAt: {
       type: DataTypes.DATE,
       field: 'created_at'

@@ -13,6 +13,7 @@ import TravelDeskPage from './pages/travelDesk.page';
 import VisitorAppointmentPage from './pages/visitorAppointment.page';
 import ApprovalActionPage from './pages/approvalAction.page';
 import { getSession, saveSession, clearSession, fetchMe } from './lib/auth.lib';
+import { ROLE } from './lib/permissions.lib';
 
 /* ── Route Wrapper Helpers ───────────────────────────────────── */
 function DashboardRoute({ isOrg = false }) {
@@ -22,8 +23,8 @@ function DashboardRoute({ isOrg = false }) {
   const roleName = (user?.role || '').toLowerCase();
   const roleId = user?.roleId || '';
   const rawRoleIds = Array.isArray(user?.rolesList) ? user.rolesList : [];
-  const isSuperAdmin = Boolean(user?.isSuperAdmin || roleId === 'role-1' || rawRoleIds.includes('role-1') || roleName.includes('super'));
-  const isBoardUser = Boolean(user?.isBoardMember || roleId === 'role-board' || roleId === 'role-6' || rawRoleIds.includes('role-6') || rawRoleIds.includes('role-board') || roleName.includes('board'));
+  const isSuperAdmin = Boolean(user?.isSuperAdmin || roleId === ROLE.SUPER_ADMIN || rawRoleIds.includes(ROLE.SUPER_ADMIN) || roleName.includes('super'));
+  const isBoardUser = Boolean(user?.isBoardMember || roleId === 'role-board' || roleId === ROLE.BOARD || rawRoleIds.includes(ROLE.BOARD) || rawRoleIds.includes('role-board') || roleName.includes('board'));
 
   if (isOrg && !isSuperAdmin && !isBoardUser) {
     return <Navigate to="/dashboard" replace />;
@@ -75,14 +76,14 @@ function WorklistRoute() {
 
   const roleName = (user?.role || '').toLowerCase();
   const roleId = user?.roleId || '';
-  const isSuperAdmin = roleId === 'role-1' || roleName.includes('super');
+  const isSuperAdmin = roleId === ROLE.SUPER_ADMIN || roleName.includes('super');
   const isBoardUser = roleId === 'role-board' || roleName.includes('board');
-  const isTravelAdmin = roleId === 'role-2-travel' || (roleName.includes('admin') && roleName.includes('travel'));
-  const isPreSpendAdmin = roleId === 'role-2-prespend' || (roleName.includes('admin') && (roleName.includes('spend') || roleName.includes('prespend')));
-  const isChangeAdmin = roleId === 'role-2-change' || (roleName.includes('admin') && !isTravelAdmin && !isPreSpendAdmin && !isSuperAdmin);
-  const isAdmin = isSuperAdmin || isTravelAdmin || isPreSpendAdmin || isChangeAdmin || roleId === 'role-2' || roleName.includes('admin');
-  const isChangeManager = roleId === 'role-3' || roleName.includes('manager');
-  const isChangeImplementer = roleId === 'role-5' || roleName.includes('implementer');
+  const isTravelAdmin = roleId === ROLE.TRAVEL_ADMIN || (roleName.includes('admin') && roleName.includes('travel'));
+  const isPreSpendAdmin = roleId === ROLE.PRESPEND_ADMIN || (roleName.includes('admin') && (roleName.includes('spend') || roleName.includes('prespend')));
+  const isChangeAdmin = roleId === ROLE.CHANGE_ADMIN || (roleName.includes('admin') && !isTravelAdmin && !isPreSpendAdmin && !isSuperAdmin);
+  const isAdmin = isSuperAdmin || isTravelAdmin || isPreSpendAdmin || isChangeAdmin || roleId === ROLE.ADMIN_LEGACY || roleName.includes('admin');
+  const isChangeManager = roleId === ROLE.CHANGE_MANAGER || roleName.includes('manager');
+  const isChangeImplementer = roleId === ROLE.CHANGE_IMPLEMENTER || roleName.includes('implementer');
   const isApprover = isSuperAdmin || isBoardUser || isAdmin || isChangeManager || isChangeImplementer;
 
   if (!isApprover) {
@@ -102,7 +103,7 @@ function WorklistRoute() {
 function SettingsRoute() {
   const { user, searchQuery, onNavigate } = useOutletContext();
   const roleName = (user?.role || '').toLowerCase();
-  const isSuperAdmin = user?.roleId === 'role-1' || roleName.includes('super');
+  const isSuperAdmin = user?.roleId === ROLE.SUPER_ADMIN || roleName.includes('super');
 
   if (!isSuperAdmin) {
     return <Navigate to="/dashboard" replace />;

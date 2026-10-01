@@ -7,6 +7,7 @@
 // ────────────────────────────────────────────────────────────────
 import bcrypt from 'bcryptjs';
 import { models } from '../models/index.js';
+import { ROLE } from '../config/constants.js';
 
 // Every seeded user gets the same dev password (overridable via env).
 // Swap this out for Microsoft Entra ID SSO later — see KT_Guide.md.
@@ -19,15 +20,15 @@ const hoursAgo = (n) => new Date(NOW - n * 3_600_000);
 
 // ---------- roles ------------------------------------------
 export const roles = [
-  { id: 'role-1', name: 'Super Admin', description: 'Ultimate system control across all modules, role & permission management, system audit, database & user management.', permissions: ['Full System Control', 'Manage Roles & Permissions', 'Manage Users', 'View System Audit Logs', 'Override Approvals'] },
-  { id: 'role-2-change', name: 'Change Desk Admin', description: 'Change Desk system administration, category oversight, and change management workflows.', permissions: ['Manage Change Desk Users', 'Manage Change Categories', 'Export Reports', 'Change Desk Settings'] },
-  { id: 'role-2-prespend', name: 'Pre-Spend Admin', description: 'Pre-Spend system administration, budget approvals, and financial spend policies.', permissions: ['Manage Pre-Spend Users', 'Manage Budgets & Thresholds', 'Export Pre-Spend Reports'] },
-  { id: 'role-2-travel', name: 'Travel Desk Admin', description: 'Travel Desk system administration, booking rules, vendor policies, and travel reports.', permissions: ['Manage Travel Users', 'Manage Travel Policies', 'Export Travel Reports'] },
-  { id: 'role-2', name: 'Admin', description: 'System administration, user onboarding, and system reporting.', permissions: ['Manage Users', 'Export Reports', 'System Settings'] },
-  { id: 'role-3', name: 'Change Manager', description: 'Full lifecycle oversight: review, approve, reject, or request information on change requests.', permissions: ['Approve / Reject CRs', 'Lifecycle Oversight', 'Request Info (Send Back)', 'View Worklist & Metrics'] },
-  { id: 'role-4', name: 'Requester', description: 'Standard employee permission to raise change requests, track progress, and update own draft submissions.', permissions: ['Create change requests', 'View own requests', 'Save draft CRs'] },
-  { id: 'role-5', name: 'Change Implementer', description: 'Implementation oversight: mark approved change requests as implemented within assigned categories.', permissions: ['Implement Approved CRs', 'View Worklist & Metrics'] },
-  { id: 'role-6', name: 'Board', description: 'Board member governance, expedited approval authority, and executive oversight.', permissions: ['Board Approvals', 'View System Reports', 'View Organization Dashboard'] }
+  { id: ROLE.SUPER_ADMIN, name: 'Super Admin', description: 'Ultimate system control across all modules, role & permission management, system audit, database & user management.', permissions: ['Full System Control', 'Manage Roles & Permissions', 'Manage Users', 'View System Audit Logs', 'Override Approvals'] },
+  { id: ROLE.CHANGE_ADMIN, name: 'Change Desk Admin', description: 'Change Desk system administration, category oversight, and change management workflows.', permissions: ['Manage Change Desk Users', 'Manage Change Categories', 'Export Reports', 'Change Desk Settings'] },
+  { id: ROLE.PRESPEND_ADMIN, name: 'Pre-Spend Admin', description: 'Pre-Spend system administration, budget approvals, and financial spend policies.', permissions: ['Manage Pre-Spend Users', 'Manage Budgets & Thresholds', 'Export Pre-Spend Reports'] },
+  { id: ROLE.TRAVEL_ADMIN, name: 'Travel Desk Admin', description: 'Travel Desk system administration, booking rules, vendor policies, and travel reports.', permissions: ['Manage Travel Users', 'Manage Travel Policies', 'Export Travel Reports'] },
+  { id: ROLE.ADMIN_LEGACY, name: 'Admin', description: 'System administration, user onboarding, and system reporting.', permissions: ['Manage Users', 'Export Reports', 'System Settings'] },
+  { id: ROLE.CHANGE_MANAGER, name: 'Change Manager', description: 'Full lifecycle oversight: review, approve, reject, or request information on change requests.', permissions: ['Approve / Reject CRs', 'Lifecycle Oversight', 'Request Info (Send Back)', 'View Worklist & Metrics'] },
+  { id: ROLE.REQUESTER, name: 'Requester', description: 'Standard employee permission to raise change requests, track progress, and update own draft submissions.', permissions: ['Create change requests', 'View own requests', 'Save draft CRs'] },
+  { id: ROLE.CHANGE_IMPLEMENTER, name: 'Change Implementer', description: 'Implementation oversight: mark approved change requests as implemented within assigned categories.', permissions: ['Implement Approved CRs', 'View Worklist & Metrics'] },
+  { id: ROLE.BOARD, name: 'Board', description: 'Board member governance, expedited approval authority, and executive oversight.', permissions: ['Board Approvals', 'View System Reports', 'View Organization Dashboard'] }
 ];
 
 // ---------- users (Empty for production) --------------------

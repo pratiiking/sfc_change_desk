@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, MessageSquare, Check } from 'lucide-react';
 import { apiFetch } from '../../lib/apiFetch.lib';
+import { ROLE } from '../../lib/permissions.lib';
 
 export default function ChangeRequestModal({ cr, onClose, onApprove, onReject, onSendBack, onSubmitForApproval, onImplement, onAddComment, user }) {
   if (!cr) return null;
@@ -8,9 +9,9 @@ export default function ChangeRequestModal({ cr, onClose, onApprove, onReject, o
   const currentUser = user || JSON.parse(localStorage.getItem('sfc_user') || '{}');
   const userRoleName = (currentUser?.role || '').toLowerCase();
   const userRoleId = currentUser?.roleId || '';
-  const isAdminOrSuperAdmin = ['role-1', 'role-2'].includes(userRoleId) || userRoleName.includes('admin') || userRoleName.includes('super');
-  const isChangeManager = userRoleId === 'role-3' || userRoleName.includes('manager') || (Array.isArray(currentUser?.cmCategories) && currentUser.cmCategories.length > 0);
-  const isChangeImplementer = userRoleId === 'role-5' || userRoleName.includes('implementer') || (Array.isArray(currentUser?.ciCategories) && currentUser.ciCategories.length > 0);
+  const isAdminOrSuperAdmin = [ROLE.SUPER_ADMIN, ROLE.ADMIN_LEGACY].includes(userRoleId) || userRoleName.includes('admin') || userRoleName.includes('super');
+  const isChangeManager = userRoleId === ROLE.CHANGE_MANAGER || userRoleName.includes('manager') || (Array.isArray(currentUser?.cmCategories) && currentUser.cmCategories.length > 0);
+  const isChangeImplementer = userRoleId === ROLE.CHANGE_IMPLEMENTER || userRoleName.includes('implementer') || (Array.isArray(currentUser?.ciCategories) && currentUser.ciCategories.length > 0);
   const managerCategories = currentUser?.cmCategories ?? [];
   const implementerCategories = currentUser?.ciCategories ?? [];
   const crCatName = (cr.category || '').toLowerCase().trim();

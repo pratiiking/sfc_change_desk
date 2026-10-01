@@ -10,7 +10,7 @@ export const UserAppRole = sequelize.define(
       field: 'user_key'
     },
     roleId: {
-      type: DataTypes.STRING(50),
+      type: DataTypes.UUID,
       allowNull: false,
       field: 'role_id',
       references: {

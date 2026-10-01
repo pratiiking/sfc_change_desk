@@ -6,6 +6,7 @@ import { getSession } from '../lib/auth.lib';
 import { FormLabel } from '../components/ui/primitives.component';
 import FormStepper from '../components/ui/FormStepper.component';
 import ManagerCombobox from '../components/ui/ManagerCombobox.component';
+import { ROLE } from '../lib/permissions.lib';
 
 export const RESTRICTED_ACTIONS = [
   'create an email id',
@@ -30,7 +31,7 @@ export const getFieldOptions = (field, currentUser) => {
   }
   const isSuperAdmin = Boolean(
     currentUser?.isSuperAdmin ||
-    currentUser?.roleId === 'role-1' ||
+    currentUser?.roleId === ROLE.SUPER_ADMIN ||
     currentUser?.role === 'Super Admin' ||
     currentUser?.role === 'ChangeDesk Super Admin' ||
     currentUser?.roleName === 'Super Admin' ||

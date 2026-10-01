@@ -4,7 +4,7 @@ import { ChangeUser } from '../models/ChangeUser.js';
 import { Employee } from '../models/Employee.js';
 import { IdentityResolver } from './identityResolver.service.js';
 import { addAuditLog } from './auditLog.service.js';
-import { normalizeRole } from '../config/constants.js';
+import { normalizeRole, ROLE } from '../config/constants.js';
 
 // ---------- Category Assignments for Change Managers ----------
 
@@ -162,7 +162,7 @@ export const getApproverEmails = async (categoryNameOrId = null) => {
 
   const admins = await ChangeUser.findAll({
     where: {
-      roleId: { [Op.in]: ['role-1', 'role-2', 'role-2-change'] },
+      roleId: { [Op.in]: [ROLE.SUPER_ADMIN, ROLE.ADMIN_LEGACY, ROLE.CHANGE_ADMIN] },
       status: 'Active'
     },
     raw: true
@@ -212,7 +212,7 @@ export const getImplementerEmails = async (categoryNameOrId = null) => {
 
   const implementers = await ChangeUser.findAll({
     where: {
-      roleId: { [Op.in]: ['role-5', 'role-1', 'role-2', 'role-2-change'] },
+      roleId: { [Op.in]: [ROLE.CHANGE_IMPLEMENTER, ROLE.SUPER_ADMIN, ROLE.ADMIN_LEGACY, ROLE.CHANGE_ADMIN] },
       status: 'Active'
     },
     raw: true
@@ -235,7 +235,7 @@ export const getBoardMemberEmails = async () => {
       ...(Array.isArray(rawRoles) ? rawRoles.map(r => (typeof r === 'string' ? r : r.roleId || r.role)) : [])
     ].filter(Boolean);
 
-    const isBoard = roleIds.some(r => r === 'role-6' || r === 'role-board' || String(r).toLowerCase().includes('board'));
+    const isBoard = roleIds.some(r => r === ROLE.BOARD || r === 'role-board' || String(r).toLowerCase().includes('board'));
     if (isBoard && u.email) {
       boardEmails.push(u.email.trim().toLowerCase());
     }
@@ -258,8 +258,8 @@ export const getTravelDeskApproverEmails = async (isShortNotice = false) => {
       ...(Array.isArray(rawRoles) ? rawRoles.map(r => (typeof r === 'string' ? r : r.roleId || r.role)) : [])
     ].filter(Boolean);
 
-    const isTravelAdmin = roleIds.some(r => r === 'role-2-travel' || String(r).toLowerCase().includes('travel'));
-    const isBoard = roleIds.some(r => r === 'role-6' || r === 'role-board' || String(r).toLowerCase().includes('board'));
+    const isTravelAdmin = roleIds.some(r => r === ROLE.TRAVEL_ADMIN || String(r).toLowerCase().includes('travel'));
+    const isBoard = roleIds.some(r => r === ROLE.BOARD || r === 'role-board' || String(r).toLowerCase().includes('board'));
 
     // If short notice or requires board approval, notify Board members + Travel Admins
     if (isShortNotice) {
@@ -293,7 +293,7 @@ export const getPreSpendAdminEmails = async () => {
       u.roleId,
       ...(Array.isArray(rawRoles) ? rawRoles.map(r => (typeof r === 'string' ? r : r.roleId || r.role)) : [])
     ].filter(Boolean);
-    const isPreSpendAdmin = roleIds.some(r => r === 'role-2-prespend' || String(r).toLowerCase().includes('prespend') || String(r).toLowerCase().includes('spend'));
+    const isPreSpendAdmin = roleIds.some(r => r === ROLE.PRESPEND_ADMIN || String(r).toLowerCase().includes('prespend') || String(r).toLowerCase().includes('spend'));
     if (isPreSpendAdmin && u.email) {
       adminEmails.push(u.email.trim().toLowerCase());
     }
@@ -313,7 +313,7 @@ export const getTravelAdminEmails = async () => {
       u.roleId,
       ...(Array.isArray(rawRoles) ? rawRoles.map(r => (typeof r === 'string' ? r : r.roleId || r.role)) : [])
     ].filter(Boolean);
-    const isTravelAdmin = roleIds.some(r => r === 'role-2-travel' || String(r).toLowerCase().includes('travel'));
+    const isTravelAdmin = roleIds.some(r => r === ROLE.TRAVEL_ADMIN || String(r).toLowerCase().includes('travel'));
     if (isTravelAdmin && u.email) {
       adminEmails.push(u.email.trim().toLowerCase());
     }
@@ -335,8 +335,8 @@ export const getPreSpendApproverEmails = async (isBoardRequired = false) => {
       ...(Array.isArray(rawRoles) ? rawRoles.map(r => (typeof r === 'string' ? r : r.roleId || r.role)) : [])
     ].filter(Boolean);
 
-    const isPreSpendAdmin = roleIds.some(r => r === 'role-2-prespend' || String(r).toLowerCase().includes('prespend') || String(r).toLowerCase().includes('spend'));
-    const isBoard = roleIds.some(r => r === 'role-6' || r === 'role-board' || String(r).toLowerCase().includes('board'));
+    const isPreSpendAdmin = roleIds.some(r => r === ROLE.PRESPEND_ADMIN || String(r).toLowerCase().includes('prespend') || String(r).toLowerCase().includes('spend'));
+    const isBoard = roleIds.some(r => r === ROLE.BOARD || r === 'role-board' || String(r).toLowerCase().includes('board'));
 
     if (isBoardRequired) {
       if ((isBoard || isPreSpendAdmin) && u.email) {
@@ -359,14 +359,14 @@ export const getPreSpendApproverEmails = async (isBoardRequired = false) => {
 
 export const getSettingsUsersService = async () => {
   const PRIVILEGED_ROLE_IDS = [
-    'role-1',           // Super Admin
-    'role-2-change',    // Change Desk Admin
-    'role-2-prespend',  // Pre-Spend Admin
-    'role-2-travel',    // Travel Desk Admin
-    'role-2',           // Admin (legacy ID)
-    'role-3',           // Change Manager
-    'role-5',           // Change Implementer
-    'role-6'            // Board Member
+    ROLE.SUPER_ADMIN,
+    ROLE.CHANGE_ADMIN,
+    ROLE.PRESPEND_ADMIN,
+    ROLE.TRAVEL_ADMIN,
+    ROLE.ADMIN_LEGACY,
+    ROLE.CHANGE_MANAGER,
+    ROLE.CHANGE_IMPLEMENTER,
+    ROLE.BOARD
   ];
 
   const users = await ChangeUser.findAll({
@@ -400,7 +400,7 @@ export const getSettingsUsersService = async () => {
   for (const u of users) {
     const userKey = String(u.id);
     const email = (u.email || '').trim().toLowerCase();
-    const assignedCats = u.roleId === 'role-5'
+    const assignedCats = u.roleId === ROLE.CHANGE_IMPLEMENTER
       ? (ciMap.get(userKey) || ciMap.get(`S8-${u.id}`) || ciMap.get(email) || [])
       : (cmMap.get(userKey) || cmMap.get(`S8-${u.id}`) || cmMap.get(email) || []);
 
@@ -507,8 +507,8 @@ export const updateSettingsUserService = async (userKey, payload = {}, meta = {}
   await user.save();
 
   const activeRoleIds = normalizedRoles.map(r => r.roleId);
-  const hasCM = activeRoleIds.includes('role-3') || user.roleId === 'role-3';
-  const hasCI = activeRoleIds.includes('role-5') || user.roleId === 'role-5';
+  const hasCM = activeRoleIds.includes(ROLE.CHANGE_MANAGER) || user.roleId === ROLE.CHANGE_MANAGER;
+  const hasCI = activeRoleIds.includes(ROLE.CHANGE_IMPLEMENTER) || user.roleId === ROLE.CHANGE_IMPLEMENTER;
 
   if (hasCM) {
     const cmCats = payload.cmCategoryIds || payload.cmCategories || payload.categoryIds || [];
@@ -549,10 +549,10 @@ export const createSettingsUserService = async (payload = {}, meta = {}) => {
   if (Array.isArray(payload.roles) && payload.roles.length > 0) {
     normalizedRoles = payload.roles.map(r => typeof r === 'string' ? normalizeRole(r) : normalizeRole(r.roleId || r.roleName || r.role)).filter(Boolean);
   } else {
-    normalizedRoles = [normalizeRole(payload.roleId || payload.role || 'role-4')];
+    normalizedRoles = [normalizeRole(payload.roleId || payload.role || ROLE.REQUESTER)];
   }
 
-  const primaryRole = normalizedRoles[0] || { roleId: 'role-4', roleName: 'Requester' };
+  const primaryRole = normalizedRoles[0] || { roleId: ROLE.REQUESTER, roleName: 'Requester' };
   const rawName = (payload.name || '').trim();
   const displayName = rawName || email.split('@')[0];
 
@@ -590,8 +590,8 @@ export const createSettingsUserService = async (payload = {}, meta = {}) => {
   }
 
   const activeRoleIds = normalizedRoles.map(r => r.roleId);
-  const hasCM = activeRoleIds.includes('role-3');
-  const hasCI = activeRoleIds.includes('role-5');
+  const hasCM = activeRoleIds.includes(ROLE.CHANGE_MANAGER);
+  const hasCI = activeRoleIds.includes(ROLE.CHANGE_IMPLEMENTER);
 
   if (hasCM) {
     const cmCats = payload.cmCategoryIds || payload.cmCategories || payload.categoryIds || [];
@@ -646,10 +646,10 @@ export const deleteSettingsUserService = async (userKey, meta = {}) => {
 
   // Set status to Inactive and revoke privileged roles
   user.status = 'Inactive';
-  user.roleId = 'role-4';
+  user.roleId = ROLE.REQUESTER;
   user.roleName = 'Requester';
   const currentMeta = user.metadata && typeof user.metadata === 'object' ? { ...user.metadata } : {};
-  currentMeta.roles = [{ roleId: 'role-4', roleName: 'Requester' }];
+  currentMeta.roles = [{ roleId: ROLE.REQUESTER, roleName: 'Requester' }];
   user.metadata = currentMeta;
   user.changed('metadata', true);
   await user.save();
@@ -680,7 +680,7 @@ export const getSettingsRolesService = async () => {
 
   const counts = {};
   users.forEach((u) => {
-    const rId = u.roleId || 'role-4';
+    const rId = u.roleId || ROLE.REQUESTER;
     counts[rId] = (counts[rId] || 0) + 1;
   });
 

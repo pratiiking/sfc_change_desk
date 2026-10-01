@@ -1,5 +1,6 @@
 import { Op, fn, col } from 'sequelize';
 import { APPROVAL_STAGE, isManagerReviewStage, isStage2ReviewStage, initialApprovalState } from '../config/approvalWorkflow.js';
+import { ROLE } from '../config/constants.js';
 import { PreSpendRequest } from '../models/PreSpendRequest.js';
 import { Employee } from '../models/Employee.js';
 import { sequelize, getNextRequestCode } from '../config/database.js';
@@ -347,9 +348,9 @@ export const getPreSpendRequestsService = async ({ user, userId, isWorklist = fa
   // just the current page, so it doesn't silently undercount past the page size.
   let actionableCount = 0;
   if (isWorklist) {
-    const isSuperAdmin = user?.isSuperAdmin || user?.roleId === 'role-1' || (user?.role || '').toLowerCase().includes('super');
+    const isSuperAdmin = user?.isSuperAdmin || user?.roleId === ROLE.SUPER_ADMIN || (user?.role || '').toLowerCase().includes('super');
     const isBoardUser = user?.isBoardUser || user?.roleId === 'role-board' || (user?.role || '').toLowerCase().includes('board');
-    const isPreSpendAdmin = user?.isPreSpendAdmin || user?.roleId === 'role-2-prespend' || ((user?.role || '').toLowerCase().includes('admin') && (user?.role || '').toLowerCase().includes('spend'));
+    const isPreSpendAdmin = user?.isPreSpendAdmin || user?.roleId === ROLE.PRESPEND_ADMIN || ((user?.role || '').toLowerCase().includes('admin') && (user?.role || '').toLowerCase().includes('spend'));
 
     const exclusions = [];
     if (currentUserId) exclusions.push({ requesterId: { [Op.ne]: currentUserId } });
@@ -444,20 +445,20 @@ const handlePreSpendActionWithinTransaction = async ({ id, action, actionComment
     : [];
 
   const isBoardUser =
-    actorRoleId === 'role-6' ||
+    actorRoleId === ROLE.BOARD ||
     actorRoleId === 'role-board' ||
     actorRole.includes('board') ||
-    actorRolesList.some(r => r === 'role-6' || r === 'role-board' || r.includes('board'));
+    actorRolesList.some(r => r === ROLE.BOARD || r === 'role-board' || r.includes('board'));
 
   const isSuperAdmin =
-    actorRoleId === 'role-1' ||
+    actorRoleId === ROLE.SUPER_ADMIN ||
     actorRole.includes('super') ||
-    actorRolesList.some(r => r === 'role-1' || r.includes('super'));
+    actorRolesList.some(r => r === ROLE.SUPER_ADMIN || r.includes('super'));
 
   const isPreSpendAdmin =
-    actorRoleId === 'role-2-prespend' ||
+    actorRoleId === ROLE.PRESPEND_ADMIN ||
     (actorRole.includes('admin') && (actorRole.includes('spend') || actorRole.includes('prespend'))) ||
-    actorRolesList.some(r => r === 'role-2-prespend' || (r.includes('admin') && (r.includes('spend') || r.includes('prespend'))));
+    actorRolesList.some(r => r === ROLE.PRESPEND_ADMIN || (r.includes('admin') && (r.includes('spend') || r.includes('prespend'))));
 
   // Integrity Rule: Users cannot approve/reject their own requests across all aliases
   const actorId = actor?.userKey || actor?.id || actor?.email || '';
