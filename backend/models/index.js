@@ -121,27 +121,41 @@ CatalogSubcategory.belongsTo(CatalogCategory, { as: 'category', foreignKey: 'cat
 CatalogSubcategory.hasMany(CatalogSubcategoryField, { as: 'fields', foreignKey: 'subcategoryId' });
 CatalogSubcategoryField.belongsTo(CatalogSubcategory, { as: 'subcategory', foreignKey: 'subcategoryId' });
 
+// ChangeManagerCategory and ChangeImplementerCategory are two application
+// views over one shared table (category_role_assignments, see migration
+// 006) — same (user, category) assignment shape, distinguished only by
+// `type`. The scope filters reads; the beforeValidate hook force-sets
+// `type` on every create/upsert so every existing call site (findAll,
+// destroy, upsert across changeRequest/identityResolver/userManagement
+// services) keeps working completely unchanged.
+const categoryAssignmentFields = {
+  id: { type: DataTypes.STRING, primaryKey: true },
+  userId: { type: DataTypes.STRING, allowNull: false },
+  categoryId: { type: DataTypes.STRING, allowNull: false, references: { model: 'catalog_categories', key: 'id' }, onDelete: 'CASCADE' },
+  type: { type: DataTypes.STRING, allowNull: false }
+};
+
 export const ChangeManagerCategory = sequelize.define(
   'ChangeManagerCategory',
+  categoryAssignmentFields,
   {
-    id: { type: DataTypes.STRING, primaryKey: true },
-    userId: { type: DataTypes.STRING, allowNull: false },
-    categoryId: { type: DataTypes.STRING, allowNull: false, references: { model: 'catalog_categories', key: 'id' }, onDelete: 'CASCADE' }
-  },
-  {
-    tableName: 'change_manager_categories',
+    tableName: 'category_role_assignments',
     timestamps: false,
-    indexes: [
-      {
-        unique: true,
-        fields: ['userId', 'categoryId']
-      }
-    ]
+    defaultScope: { where: { type: 'manager' } },
+    hooks: { beforeValidate: (instance) => { instance.type = 'manager'; } }
   }
 );
 
-import { ChangeImplementerCategory } from './ChangeImplementerCategory.js';
-export { ChangeImplementerCategory };
+export const ChangeImplementerCategory = sequelize.define(
+  'ChangeImplementerCategory',
+  categoryAssignmentFields,
+  {
+    tableName: 'category_role_assignments',
+    timestamps: false,
+    defaultScope: { where: { type: 'implementer' } },
+    hooks: { beforeValidate: (instance) => { instance.type = 'implementer'; } }
+  }
+);
 
 CatalogCategory.hasMany(ChangeManagerCategory, { foreignKey: 'categoryId', as: 'assignedManagers' });
 ChangeManagerCategory.belongsTo(CatalogCategory, { foreignKey: 'categoryId' });

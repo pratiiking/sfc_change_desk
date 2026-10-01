@@ -28,8 +28,11 @@ const REFERENCE_COLUMNS = [
   ['pre_spend_requests', 'requester_id'],
   ['travel_requests', 'requester_id'],
   ['audit_logs', 'actor_id'],
-  ['change_manager_categories', 'user_id'],
-  ['change_implementer_categories', 'user_id']
+  // category_role_assignments merges what used to be change_manager_categories
+  // + change_implementer_categories (see migration 006) — already normalized
+  // under both old names before that merge; kept here so a future
+  // --dry-run / re-run against this table still works.
+  ['category_role_assignments', 'user_id']
 ];
 
 const norm = (v) => String(v).trim().toLowerCase();
