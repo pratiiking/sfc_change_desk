@@ -3,6 +3,7 @@ import { sequelize } from '../config/database.js';
 import { NotificationJob } from '../models/NotificationJob.js';
 import { sendMail } from './mail.service.js';
 import { ChangeRequest, PreSpendRequest, TravelRequest } from '../models/index.js';
+import { isManagerReviewStage } from '../config/approvalWorkflow.js';
 
 let workerInterval = null;
 const CLAIM_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes lease lock
@@ -74,19 +75,19 @@ export const processNotificationJobs = async () => {
           const cr = await ChangeRequest.findByPk(job.requestId);
           if (!cr) isEligible = false;
           else if (job.jobType === 'manager_invitation' || job.jobType === 'manager_reminder') {
-            if (cr.approvalStage !== 'manager_review' || cr.approvalCycle !== job.approvalCycle) isEligible = false;
+            if (!isManagerReviewStage(cr.approvalStage) || cr.approvalCycle !== job.approvalCycle) isEligible = false;
           }
         } else if (job.module === 'prespend') {
           const ps = await PreSpendRequest.findByPk(job.requestId);
           if (!ps) isEligible = false;
           else if (job.jobType === 'manager_invitation' || job.jobType === 'manager_reminder') {
-            if (ps.approvalStage !== 'manager_review' || ps.approvalCycle !== job.approvalCycle) isEligible = false;
+            if (!isManagerReviewStage(ps.approvalStage) || ps.approvalCycle !== job.approvalCycle) isEligible = false;
           }
         } else if (job.module === 'travel') {
           const tr = await TravelRequest.findByPk(job.requestId);
           if (!tr) isEligible = false;
           else if (job.jobType === 'manager_invitation' || job.jobType === 'manager_reminder') {
-            if (tr.approvalStage !== 'manager_review' || tr.approvalCycle !== job.approvalCycle) isEligible = false;
+            if (!isManagerReviewStage(tr.approvalStage) || tr.approvalCycle !== job.approvalCycle) isEligible = false;
           }
         }
 

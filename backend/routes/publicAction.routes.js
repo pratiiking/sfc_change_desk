@@ -11,6 +11,7 @@ import {
 import { handlePreSpendActionService } from '../services/preSpend.service.js';
 import { handleTravelActionService } from '../services/travelDesk.service.js';
 import { IdentityResolver } from '../services/identityResolver.service.js';
+import { APPROVAL_STAGE, isManagerReviewStage } from '../config/approvalWorkflow.js';
 import { publicActionRateLimiter } from '../middlewares/rateLimit.middleware.js';
 
 const CR_INCLUDE = [
@@ -44,17 +45,17 @@ router.get('/change-request-action', async (req, res) => {
       if (tokenCycle && ps.approvalCycle && ps.approvalCycle !== tokenCycle) {
         return res.status(409).json({ success: false, message: 'This action link has expired due to a new review cycle.' });
       }
-      const isStage1Token = tokenStage === 'manager_review';
+      const isStage1Token = tokenStage === APPROVAL_STAGE.MANAGER_REVIEW;
       const isPending = ps.status === 'Pending Approval' || ps.status === 'Pending';
       const isAlreadyProcessed = isStage1Token
-        ? (ps.approvalStage !== 'manager_review' || !isPending)
+        ? (!isManagerReviewStage(ps.approvalStage) || !isPending)
         : !isPending;
 
       const lastAction = Array.isArray(ps.approvalHistory) && ps.approvalHistory.length > 0
         ? ps.approvalHistory[ps.approvalHistory.length - 1]
         : null;
 
-      const isStage1 = ps.approvalStage === 'manager_review';
+      const isStage1 = isManagerReviewStage(ps.approvalStage);
 
       return res.json({
         success: true,
@@ -63,7 +64,7 @@ router.get('/change-request-action', async (req, res) => {
           request: ps,
           action: defaultAction || 'approve',
           approverEmail,
-          stage: ps.approvalStage || 'manager_review',
+          stage: ps.approvalStage || APPROVAL_STAGE.MANAGER_REVIEW,
           isManagerReview: isStage1Token || isStage1,
           stageLabel: isStage1 ? 'Waiting for manager review' : ps.status === 'Approved' ? 'Approved' : ps.status === 'Rejected' ? 'Rejected' : 'Pending Stage 2 Review',
           isPending,
@@ -92,17 +93,17 @@ router.get('/change-request-action', async (req, res) => {
       if (tokenCycle && tr.approvalCycle && tr.approvalCycle !== tokenCycle) {
         return res.status(409).json({ success: false, message: 'This action link has expired due to a new review cycle.' });
       }
-      const isStage1Token = tokenStage === 'manager_review';
+      const isStage1Token = tokenStage === APPROVAL_STAGE.MANAGER_REVIEW;
       const isPending = tr.status === 'Pending Approval' || tr.status === 'Pending';
       const isAlreadyProcessed = isStage1Token
-        ? (tr.approvalStage !== 'manager_review' || !isPending)
+        ? (!isManagerReviewStage(tr.approvalStage) || !isPending)
         : !isPending;
 
       const lastAction = Array.isArray(tr.approvalHistory) && tr.approvalHistory.length > 0
         ? tr.approvalHistory[tr.approvalHistory.length - 1]
         : null;
 
-      const isStage1 = tr.approvalStage === 'manager_review';
+      const isStage1 = isManagerReviewStage(tr.approvalStage);
 
       return res.json({
         success: true,
@@ -111,7 +112,7 @@ router.get('/change-request-action', async (req, res) => {
           request: tr,
           action: defaultAction || 'approve',
           approverEmail,
-          stage: tr.approvalStage || 'manager_review',
+          stage: tr.approvalStage || APPROVAL_STAGE.MANAGER_REVIEW,
           isManagerReview: isStage1Token || isStage1,
           stageLabel: isStage1 ? 'Waiting for manager review' : tr.status === 'Approved' ? 'Approved' : tr.status === 'Rejected' ? 'Rejected' : 'Pending Stage 2 Review',
           isPending,
@@ -140,12 +141,12 @@ router.get('/change-request-action', async (req, res) => {
     }
 
     const serialized = serializeChangeRequest(cr);
-    const isStage1Token = tokenStage === 'manager_review';
+    const isStage1Token = tokenStage === APPROVAL_STAGE.MANAGER_REVIEW;
     const isImplementToken = defaultAction === 'implement';
-    const isStage1 = cr.approvalStage === 'manager_review';
+    const isStage1 = isManagerReviewStage(cr.approvalStage);
 
     const isAlreadyProcessed = isStage1Token
-      ? (cr.approvalStage !== 'manager_review' || cr.status !== 'Pending')
+      ? (!isManagerReviewStage(cr.approvalStage) || cr.status !== 'Pending')
       : isImplementToken
         ? (cr.status === 'Implemented' || cr.status === 'Rejected')
         : (cr.status !== 'Pending');
@@ -166,7 +167,7 @@ router.get('/change-request-action', async (req, res) => {
         request: serialized,
         action: defaultAction || 'approve',
         approverEmail,
-        stage: cr.approvalStage || 'manager_review',
+        stage: cr.approvalStage || APPROVAL_STAGE.MANAGER_REVIEW,
         isManagerReview: isStage1Token || isStage1,
         stageLabel: isStage1 ? 'Waiting for manager review' : cr.status === 'Approved' ? 'Manager approved' : cr.status === 'Rejected' ? 'Rejected' : cr.status === 'Implemented' ? 'Implemented' : 'Pending Stage 2 Review',
         isPending: serialized.status === 'Pending',
@@ -238,7 +239,7 @@ router.post('/change-request-action', async (req, res) => {
       if (tokenCycle && ps.approvalCycle && ps.approvalCycle !== tokenCycle) {
         return res.status(409).json({ success: false, message: 'This action link has expired due to a new review cycle.' });
       }
-      if (tokenStage === 'manager_review' && ps.approvalStage !== 'manager_review') {
+      if (tokenStage === APPROVAL_STAGE.MANAGER_REVIEW && !isManagerReviewStage(ps.approvalStage)) {
         return res.json({
           success: true,
           alreadyProcessed: true,
@@ -278,7 +279,7 @@ router.post('/change-request-action', async (req, res) => {
       if (tokenCycle && tr.approvalCycle && tr.approvalCycle !== tokenCycle) {
         return res.status(409).json({ success: false, message: 'This action link has expired due to a new review cycle.' });
       }
-      if (tokenStage === 'manager_review' && tr.approvalStage !== 'manager_review') {
+      if (tokenStage === APPROVAL_STAGE.MANAGER_REVIEW && !isManagerReviewStage(tr.approvalStage)) {
         return res.json({
           success: true,
           alreadyProcessed: true,
@@ -317,7 +318,7 @@ router.post('/change-request-action', async (req, res) => {
       return res.status(409).json({ success: false, message: 'This action link has expired due to a new review cycle.' });
     }
 
-    if (tokenStage === 'manager_review' && cr.approvalStage !== 'manager_review') {
+    if (tokenStage === APPROVAL_STAGE.MANAGER_REVIEW && !isManagerReviewStage(cr.approvalStage)) {
       return res.json({
         success: true,
         alreadyProcessed: true,

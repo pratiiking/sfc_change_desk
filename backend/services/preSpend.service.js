@@ -1,4 +1,5 @@
 import { Op, fn, col } from 'sequelize';
+import { APPROVAL_STAGE, isManagerReviewStage, isStage2ReviewStage, initialApprovalState } from '../config/approvalWorkflow.js';
 import { PreSpendRequest } from '../models/PreSpendRequest.js';
 import { Employee } from '../models/Employee.js';
 import { sequelize, getNextRequestCode } from '../config/database.js';
@@ -101,9 +102,7 @@ export const createPreSpendService = async (data, user) => {
     policyCertified: Boolean(data.certified || data.policyCertified),
     managerName: validManagerName,
     managerEmail: validManagerEmail,
-    approvalStage: 'manager_review',
-    approvalCycle: 1,
-    managerReviewEnteredAt: new Date(),
+    ...initialApprovalState(),
   });
 
   await addAuditLog({
@@ -300,7 +299,7 @@ export const getPreSpendRequestsService = async ({ user, userId, isWorklist = fa
       justification: r.commercialJustification
     },
     status: r.status,
-    approvalStage: r.approvalStage || 'manager_review',
+    approvalStage: r.approvalStage || APPROVAL_STAGE.MANAGER_REVIEW,
     managerName: r.managerName || null,
     managerEmail: r.managerEmail || null,
     policyCertified: r.policyCertified,
@@ -480,8 +479,8 @@ const handlePreSpendActionWithinTransaction = async ({ id, action, actionComment
     throw err;
   }
 
-  const isStage1 = req.approvalStage === 'manager_review';
-  const isStage2 = req.approvalStage === 'stage_2_review' || (!req.approvalStage && req.status === 'Pending Approval');
+  const isStage1 = isManagerReviewStage(req.approvalStage);
+  const isStage2 = isStage2ReviewStage(req.approvalStage, req.status, 'Pending Approval');
 
   if (isStage1) {
     // Stage 1: Reporting Manager review
@@ -507,7 +506,7 @@ const handlePreSpendActionWithinTransaction = async ({ id, action, actionComment
       });
 
       req.status = 'Rejected';
-      req.approvalStage = 'rejected';
+      req.approvalStage = APPROVAL_STAGE.REJECTED;
       req.approvalHistory = history;
       await req.save({ transaction });
 
@@ -545,7 +544,7 @@ const handlePreSpendActionWithinTransaction = async ({ id, action, actionComment
       });
 
       req.status = 'Pending Approval';
-      req.approvalStage = 'stage_2_review';
+      req.approvalStage = APPROVAL_STAGE.STAGE_2_REVIEW;
       req.approvalHistory = history;
       await req.save({ transaction });
 
@@ -599,7 +598,7 @@ const handlePreSpendActionWithinTransaction = async ({ id, action, actionComment
   });
 
   req.status = newStatus;
-  req.approvalStage = action === 'approve' ? 'completed' : 'rejected';
+  req.approvalStage = action === 'approve' ? APPROVAL_STAGE.COMPLETED : APPROVAL_STAGE.REJECTED;
   req.approvalHistory = history;
   await req.save({ transaction });
 

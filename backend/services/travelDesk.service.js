@@ -1,4 +1,5 @@
 import { Op } from 'sequelize';
+import { APPROVAL_STAGE, isManagerReviewStage, isStage2ReviewStage, initialApprovalState } from '../config/approvalWorkflow.js';
 import { TravelRequest } from '../models/TravelRequest.js';
 import { Employee } from '../models/Employee.js';
 import { sequelize, getNextRequestCode } from '../config/database.js';
@@ -101,9 +102,7 @@ export const createTravelService = async (data, user) => {
     policyCertified: Boolean(data.certified || data.policyCertified),
     managerName: validManagerName,
     managerEmail: validManagerEmail,
-    approvalStage: 'manager_review',
-    approvalCycle: 1,
-    managerReviewEnteredAt: new Date(),
+    ...initialApprovalState(),
     status: 'Pending Approval'
   });
 
@@ -267,7 +266,7 @@ export const getTravelRequestsService = async ({ user, userId, isWorklist = fals
     isShortNotice: r.isShortNotice,
     bookingDetails: r.bookingDetails || {},
     status: r.status,
-    approvalStage: r.approvalStage || 'manager_review',
+    approvalStage: r.approvalStage || APPROVAL_STAGE.MANAGER_REVIEW,
     managerName: r.managerName || null,
     managerEmail: r.managerEmail || null,
     policyCertified: r.policyCertified,
@@ -448,8 +447,8 @@ const handleTravelActionWithinTransaction = async ({ id, action, actionComment, 
     throw err;
   }
 
-  const isStage1 = req.approvalStage === 'manager_review';
-  const isStage2 = req.approvalStage === 'stage_2_review' || (!req.approvalStage && req.status === 'Pending Approval');
+  const isStage1 = isManagerReviewStage(req.approvalStage);
+  const isStage2 = isStage2ReviewStage(req.approvalStage, req.status, 'Pending Approval');
 
   if (isStage1) {
     // Stage 1: Reporting Manager Review
@@ -475,7 +474,7 @@ const handleTravelActionWithinTransaction = async ({ id, action, actionComment, 
       });
 
       req.status = 'Rejected';
-      req.approvalStage = 'rejected';
+      req.approvalStage = APPROVAL_STAGE.REJECTED;
       req.approvalHistory = history;
       await req.save({ transaction });
 
@@ -513,7 +512,7 @@ const handleTravelActionWithinTransaction = async ({ id, action, actionComment, 
       });
 
       req.status = 'Pending Approval';
-      req.approvalStage = 'stage_2_review';
+      req.approvalStage = APPROVAL_STAGE.STAGE_2_REVIEW;
       req.approvalHistory = history;
       await req.save({ transaction });
 
@@ -567,7 +566,7 @@ const handleTravelActionWithinTransaction = async ({ id, action, actionComment, 
   });
 
   req.status = newStatus;
-  req.approvalStage = action === 'approve' ? 'completed' : 'rejected';
+  req.approvalStage = action === 'approve' ? APPROVAL_STAGE.COMPLETED : APPROVAL_STAGE.REJECTED;
   req.approvalHistory = history;
   await req.save({ transaction });
 

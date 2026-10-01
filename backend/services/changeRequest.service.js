@@ -16,6 +16,7 @@ import { UserAppRole } from '../models/UserAppRole.js';
 import { IdentityResolver } from './identityResolver.service.js';
 import { checkUserInUserTable } from './auth.service.js';
 import { isRestrictedAction } from '../config/constants.js';
+import { APPROVAL_STAGE, isManagerReviewStage, isStage2ReviewStage, initialApprovalState } from '../config/approvalWorkflow.js';
 import { addAuditLog } from './auditLog.service.js';
 import { buildDateFilterClause } from '../utils/dateFilterUtils.js';
 import { getApproverEmails, getImplementerEmails } from './userManagement.service.js';
@@ -407,8 +408,8 @@ export const getFilteredChangeRequests = async ({
         (cr.employeeId && (typeof actingUserKeys !== 'undefined' && actingUserKeys.has(cr.employeeId)))
       ) : false;
 
-      const isStage1 = cr.approvalStage === 'manager_review';
-      const isStage2 = cr.approvalStage === 'stage_2_review' || (!cr.approvalStage && cr.status === 'Pending');
+      const isStage1 = isManagerReviewStage(cr.approvalStage);
+      const isStage2 = isStage2ReviewStage(cr.approvalStage, cr.status, 'Pending');
 
       const crManagerEmail = (cr.managerEmail || '').toLowerCase().trim();
       const isAssignedReportingManager = Boolean(actingUserEmail && crManagerEmail && actingUserEmail === crManagerEmail);
@@ -488,8 +489,8 @@ export const getFilteredChangeRequests = async ({
         (cr.employeeId && (typeof actingUserKeys !== 'undefined' && actingUserKeys.has(cr.employeeId)))
       ) : false;
 
-      const isStage1 = cr.approvalStage === 'manager_review';
-      const isStage2 = cr.approvalStage === 'stage_2_review' || (!cr.approvalStage && cr.status === 'Pending');
+      const isStage1 = isManagerReviewStage(cr.approvalStage);
+      const isStage2 = isStage2ReviewStage(cr.approvalStage, cr.status, 'Pending');
       const crManagerEmail = (cr.managerEmail || '').toLowerCase().trim();
       const isAssignedReportingManager = Boolean(actingUserEmail && crManagerEmail && actingUserEmail === crManagerEmail);
 
@@ -694,9 +695,7 @@ export const submitDraftChangeRequestService = async (id, actorId = null) => {
 
     cr.status = 'Pending';
     cr.activeStep = 1;
-    cr.approvalStage = 'manager_review';
-    cr.approvalCycle = (cr.approvalCycle || 0) + 1;
-    cr.managerReviewEnteredAt = new Date();
+    Object.assign(cr, initialApprovalState((cr.approvalCycle || 0) + 1));
     cr.submittedAt = new Date();
     await cr.save({ transaction: tx });
 
@@ -917,9 +916,7 @@ export const createChangeRequestService = async (payload = {}) => {
     endDate: payload.endDate || null,
     activeStep: 1,
     status,
-    approvalStage: 'manager_review',
-    approvalCycle: 1,
-    managerReviewEnteredAt: new Date(),
+    ...initialApprovalState(),
     submittedAt: new Date(),
     closedAt: null,
     requesterId,
@@ -1138,8 +1135,8 @@ export const applyWorklistActionService = async ({ id, action, rejectionReason =
     throw err;
   }
 
-  const isStage1 = targetCR.approvalStage === 'manager_review';
-  const isStage2 = targetCR.approvalStage === 'stage_2_review' || (!targetCR.approvalStage && targetCR.status === 'Pending');
+  const isStage1 = isManagerReviewStage(targetCR.approvalStage);
+  const isStage2 = isStage2ReviewStage(targetCR.approvalStage, targetCR.status, 'Pending');
 
   if (isStage1) {
     // Stage 1: Manager Review
@@ -1163,7 +1160,7 @@ export const applyWorklistActionService = async ({ id, action, rejectionReason =
           throw err;
         }
         cr.status = 'Rejected';
-        cr.approvalStage = 'rejected';
+        cr.approvalStage = APPROVAL_STAGE.REJECTED;
         cr.closedAt = new Date();
         cr.rejectionReason = actionComment;
         const existingComments = Array.isArray(cr.comments) ? [...cr.comments] : [];
@@ -1211,13 +1208,13 @@ export const applyWorklistActionService = async ({ id, action, rejectionReason =
     if (action === 'approve') {
       await sequelize.transaction(async (tx) => {
         const cr = await ChangeRequest.findByPk(id, { transaction: tx, lock: tx.LOCK?.UPDATE });
-        if (cr.status !== 'Pending' || cr.approvalStage !== 'manager_review') {
+        if (cr.status !== 'Pending' || !isManagerReviewStage(cr.approvalStage)) {
           const err = new Error(`This change request has already been decided (current status: ${cr.status}).`);
           err.statusCode = 409;
           throw err;
         }
         cr.status = 'Pending';
-        cr.approvalStage = 'stage_2_review';
+        cr.approvalStage = APPROVAL_STAGE.STAGE_2_REVIEW;
         const existingComments = Array.isArray(cr.comments) ? [...cr.comments] : [];
         existingComments.push({
           id: `cmt-${Date.now()}`,
@@ -1257,7 +1254,7 @@ export const applyWorklistActionService = async ({ id, action, rejectionReason =
         });
       }).catch((err) => console.error('[mail] Stage 2 invite notification failed:', err.message));
 
-      return { id, action: 'approve', status: 'Pending', approvalStage: 'stage_2_review', comment: actionComment };
+      return { id, action: 'approve', status: 'Pending', approvalStage: APPROVAL_STAGE.STAGE_2_REVIEW, comment: actionComment };
     }
   }
 
@@ -1305,7 +1302,7 @@ export const applyWorklistActionService = async ({ id, action, rejectionReason =
       const cr = await ChangeRequest.findByPk(id, { transaction: tx });
       if (cr) {
         cr.status = 'Draft';
-        cr.approvalStage = 'draft';
+        cr.approvalStage = APPROVAL_STAGE.DRAFT;
         await cr.save({ transaction: tx });
         await ChangeRequestApproval.destroy({ where: { changeRequestId: id }, transaction: tx });
         await addAuditLog({ actorId, action: 'CR Sent Back', ref: id, detail: `Sent back ${id} to draft.` }, tx);
@@ -1352,7 +1349,7 @@ export const applyWorklistActionService = async ({ id, action, rejectionReason =
     }
     if (changeRequest) {
       changeRequest.status = finalStatus;
-      changeRequest.approvalStage = finalStatus === 'Approved' ? 'completed' : 'rejected';
+      changeRequest.approvalStage = finalStatus === 'Approved' ? APPROVAL_STAGE.COMPLETED : APPROVAL_STAGE.REJECTED;
       if (finalStatus === 'Rejected') {
         changeRequest.closedAt = new Date();
         changeRequest.rejectionReason = actionComment || 'This change request was rejected during Change Manager review.';
