@@ -48,11 +48,6 @@ export const UserS8 = sequelize.define(
       allowNull: true,
       field: 'last_login'
     },
-    role: {
-      type: DataTypes.STRING,
-      allowNull: true,
-      field: 'role'
-    },
     roleId: {
       type: DataTypes.UUID,
       allowNull: false,

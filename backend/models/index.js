@@ -82,7 +82,7 @@ export const AuditLog = sequelize.define(
     timestamp: { type: DataTypes.DATE, defaultValue: DataTypes.NOW }
   },
   {
-    tableName: 'audit_logs',
+    tableName: 'hot_desk_audit_logs',
     timestamps: true,
     underscored: true
   }
