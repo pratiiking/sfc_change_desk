@@ -701,23 +701,6 @@ export const submitDraftChangeRequestService = async (id, actorId = null) => {
 
     await createApprovalSnapshot(cr, tx);
 
-    await updateConfig(
-      'dashboard_stats',
-      (s) => ({
-        pending: (s.pending || 0) + 1
-      }),
-      tx
-    );
-
-    await updateConfig(
-      'worklist_metrics',
-      (m) => ({
-        ...m,
-        pending: (m.pending || 0) + 1
-      }),
-      tx
-    );
-
     await addAuditLog(
       {
         actorId,
@@ -925,14 +908,6 @@ export const createChangeRequestService = async (payload = {}) => {
   });
 
   await createApprovalSnapshot(createdCR);
-  await updateConfig('dashboard_stats', (s) => ({
-    total: (s.total || 0) + 1,
-    pending: (s.pending || 0) + 1
-  }));
-  await updateConfig('worklist_metrics', (m) => ({
-    ...m,
-    pending: (m.pending || 0) + 1
-  }));
 
   await addAuditLog({
     actorId: requesterId,
@@ -1124,8 +1099,7 @@ export const applyWorklistActionService = async ({ id, action, rejectionReason =
       })
       .catch((err) => console.error('[mail] fetch updated CR for implement notification failed:', err.message));
 
-    const metrics = await getConfig('worklist_metrics');
-    return { id, action: 'implement', status: 'Implemented', closedAt: new Date(), implementedComment: actionComment, worklistMetrics: metrics };
+    return { id, action: 'implement', status: 'Implemented', closedAt: new Date(), implementedComment: actionComment };
   }
 
   // Mandatory comment enforcement server-side
@@ -1308,8 +1282,7 @@ export const applyWorklistActionService = async ({ id, action, rejectionReason =
         await addAuditLog({ actorId, action: 'CR Sent Back', ref: id, detail: `Sent back ${id} to draft.` }, tx);
       }
     });
-    const metrics = await getConfig('worklist_metrics');
-    return { id, action, status: 'Draft', worklistMetrics: metrics };
+    return { id, action, status: 'Draft' };
   }
 
   const decision = action === 'approve' ? 'Approved' : 'Rejected';
@@ -1401,12 +1374,6 @@ export const applyWorklistActionService = async ({ id, action, rejectionReason =
       },
       t
     );
-
-    await updateConfig(
-      'worklist_metrics',
-      (m) => ({ [decision === 'Approved' ? 'approved' : 'rejected']: (m[decision === 'Approved' ? 'approved' : 'rejected'] || 0) + 1 }),
-      t
-    );
   });
 
   ChangeRequest.findByPk(id, { include: CR_INCLUDE })
@@ -1442,8 +1409,6 @@ export const applyWorklistActionService = async ({ id, action, rejectionReason =
     })
     .catch((err) => console.error('[mail] decision notification failed:', err.message));
 
-  const pending = await ChangeRequest.count({ where: { status: 'Pending' } });
-  const metrics = await getConfig('worklist_metrics');
   return {
     id,
     action,
@@ -1452,8 +1417,7 @@ export const applyWorklistActionService = async ({ id, action, rejectionReason =
     rejectedComment: decision === 'Rejected' ? actionComment : undefined,
     rejectionReason: decision === 'Rejected' ? actionComment : undefined,
     comment: actionComment,
-    decidedBy: actorName,
-    worklistMetrics: { ...metrics, pending }
+    decidedBy: actorName
   };
 };
 
