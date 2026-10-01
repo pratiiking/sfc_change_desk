@@ -41,7 +41,7 @@ const initials = (name = '') =>
 import { UserS8 } from '../models/UserS8.js';
 import { sequelize } from '../config/database.js';
 
-/** Check if email exists in public.users (S8 table) */
+/** Check if email exists in public.hot_desk_users (S8 table) */
 export const checkUserInUserTable = async (email) => {
   if (!email) return false;
   try {

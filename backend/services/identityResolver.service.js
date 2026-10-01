@@ -18,7 +18,7 @@ export class IdentityResolver {
     }
   }
 
-  /** Check if email exists in DB's User table (UserS8 / public.users) */
+  /** Check if email exists in DB's User table (UserS8 / public.hot_desk_users) */
   static async checkUserInUserTable(email) {
     if (!email) return false;
     try {

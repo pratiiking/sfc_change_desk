@@ -63,7 +63,7 @@ export const UserS8 = sequelize.define(
     }
   },
   {
-    tableName: 'users',
+    tableName: 'hot_desk_users',
     timestamps: true
   }
 );
