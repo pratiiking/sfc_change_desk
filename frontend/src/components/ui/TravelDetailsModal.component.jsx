@@ -26,6 +26,21 @@ const MODE_ICONS = {
   Hotel: Building2
 };
 
+// Keys already surfaced via a canonical column (see travelDesk.service.js's
+// field-alias extraction) are hidden from the generic "Booking Specifications"
+// section below, so the same value isn't shown twice.
+const DUPLICATE_BOOKING_KEYS = [
+  'Traveller', 'Department / Cost Centre', 'Purpose of visit',
+  'Trip type', 'Journey type',
+  'Travel class', 'Bus type', 'Room type',
+  'From', 'From station', 'Pickup location',
+  'To', 'To station', 'Final drop location', 'City / Location',
+  'Date of travel', 'Date of journey', 'Check-in date',
+  'Return / onward date', 'Return date', 'Check-out date',
+  'Preferred departure time', 'Preferred time slot', 'Pickup time',
+  'legs', 'returnFlightRequired'
+];
+
 const formatCleanDate = (d) => {
   if (!d) return '—';
   try {
@@ -575,7 +590,7 @@ export default function TravelDetailsModal({ item, onClose, onApprove, onReject,
               </h4>
               <div className="grid grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-3 rounded-lg border border-border bg-input px-4 py-[0.85rem]">
                 {Object.entries(booking).map(([key, val]) => {
-                  if (!val || typeof val === 'object' || ['Traveller', 'Department / Cost Centre', 'Purpose of visit', 'Date of travel', 'Date of journey', 'Check-in date', 'From', 'To', 'From station', 'To station', 'Trip type', 'legs', 'returnFlightRequired'].includes(key)) return null;
+                  if (!val || typeof val === 'object' || DUPLICATE_BOOKING_KEYS.includes(key)) return null;
                   return (
                     <div key={key}>
                       <div className="text-[0.75rem] text-muted-foreground">{key}</div>

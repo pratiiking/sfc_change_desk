@@ -479,10 +479,22 @@ export default function TravelDeskPage({ onNavigate, user, travellerName = '', d
         ? (multiCityLegs[0]?.preferredTime || '')
         : (values['Preferred departure time'] || values['Preferred time slot'] || values['Pickup time'] || '');
 
-      // Build consolidated bookingDetails
+      // Build consolidated bookingDetails, stripping out the raw keys that are
+      // already captured in the canonical columns above (tripType, travelClass,
+      // fromLocation, toLocation, departureDate, returnDate, preferredTimeSlot) so
+      // the same value isn't persisted twice under its mode-specific label.
       const finalBookingDetails = {
         ...values
       };
+      [
+        'Trip type', 'Journey type',
+        'Travel class', 'Bus type', 'Room type',
+        'From', 'From station', 'Pickup location',
+        'To', 'To station', 'Final drop location', 'City / Location',
+        'Date of travel', 'Date of journey', 'Check-in date',
+        'Return / onward date', 'Return date', 'Check-out date',
+        'Preferred departure time', 'Preferred time slot', 'Pickup time'
+      ].forEach((key) => delete finalBookingDetails[key]);
 
       if (isMultiCityFlight) {
         finalBookingDetails.legs = multiCityLegs;
@@ -492,11 +504,6 @@ export default function TravelDeskPage({ onNavigate, user, travellerName = '', d
         delete finalBookingDetails.returnPreferredTime;
         delete finalBookingDetails.returnFrom;
         delete finalBookingDetails.returnTo;
-        delete finalBookingDetails['Date of travel'];
-        delete finalBookingDetails['Preferred departure time'];
-        delete finalBookingDetails['From'];
-        delete finalBookingDetails['To'];
-        delete finalBookingDetails['Return / onward date'];
         delete finalBookingDetails['Return / onward time'];
         delete finalBookingDetails['Onward destination'];
       }
