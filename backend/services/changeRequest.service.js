@@ -670,7 +670,6 @@ export const submitDraftChangeRequestService = async (id, actorId = null) => {
     }
 
     cr.status = 'Pending';
-    cr.activeStep = 1;
     Object.assign(cr, initialApprovalState((cr.approvalCycle || 0) + 1));
     cr.submittedAt = new Date();
     await cr.save({ transaction: tx });
@@ -873,7 +872,6 @@ export const createChangeRequestService = async (payload = {}) => {
     justification: payload.justification || '',
     startDate: payload.startDate || null,
     endDate: payload.endDate || null,
-    activeStep: 1,
     status,
     ...initialApprovalState(),
     submittedAt: new Date(),

@@ -29,7 +29,6 @@ export const ChangeRequest = sequelize.define(
     justification: { type: DataTypes.TEXT, defaultValue: '' },
     startDate: { type: DataTypes.STRING, allowNull: true },
     endDate: { type: DataTypes.STRING, allowNull: true },
-    activeStep: { type: DataTypes.INTEGER, defaultValue: 1 },
     status: { type: DataTypes.STRING, defaultValue: 'Pending' },
     approvalStage: {
       type: DataTypes.STRING(32),

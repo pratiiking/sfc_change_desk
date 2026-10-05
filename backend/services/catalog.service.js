@@ -106,29 +106,6 @@ export const getCatalogCategoriesService = async () => {
   return categories;
 };
 
-export const getCatalogSubcategoriesService = async (categoryId) => {
-  const rows = await CatalogSubcategory.findAll({
-    where: { categoryId, status: 'Active' },
-    attributes: ['id', 'categoryId', 'name', 'sla', 'status', 'description']
-  });
-  const list = rows.map((s) => {
-    const plain = s.get({ plain: true });
-    delete plain.workflowId;
-    delete plain.workflow;
-    delete plain.risk;
-    if (plain.id === 'subcat-sec-ep' || plain.name === 'End Point Agent') {
-      plain.name = 'Endpoint Agent';
-    }
-    return plain;
-  });
-  list.sort((a, b) => {
-    const orderA = SUBCATEGORY_ORDER_MAP[a.id] ?? 99;
-    const orderB = SUBCATEGORY_ORDER_MAP[b.id] ?? 99;
-    return orderA - orderB;
-  });
-  return list;
-};
-
 export const getSubcategoryFieldsService = async (subcategoryId) => {
   const rows = await CatalogSubcategoryField.findAll({
     where: { subcategoryId },

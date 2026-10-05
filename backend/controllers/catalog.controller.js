@@ -1,7 +1,6 @@
 import { asyncHandler } from '../utils/asyncHandler.js';
 import {
   getCatalogCategoriesService,
-  getCatalogSubcategoriesService,
   getSubcategoryFieldsService,
   createCatalogSubcategoryService
 } from '../services/dashboard.service.js';
@@ -12,11 +11,6 @@ export const getCatalog = asyncHandler(async (req, res) => {
 
 export const getCatalogCategories = asyncHandler(async (req, res) => {
   res.json({ success: true, data: await getCatalogCategoriesService() });
-});
-
-export const getCatalogSubcategories = asyncHandler(async (req, res) => {
-  const { id } = req.params;
-  res.json({ success: true, data: await getCatalogSubcategoriesService(id) });
 });
 
 export const getSubcategoryFields = asyncHandler(async (req, res) => {

@@ -34,13 +34,6 @@ export const roles = [
 // ---------- users (Empty for production) --------------------
 export const users = [];
 
-// ---------- workflows ------------------------------------
-export const workflows = [
-  { id: 'wf-1', name: 'Standard Change Workflow', steps: 'Draft → Change Manager Review → Approved → Implemented' },
-  { id: 'wf-2', name: 'Expedited Workflow', steps: 'Draft → Change Manager Review → Approved → Implemented' },
-  { id: 'wf-3', name: 'Lightweight Access Workflow', steps: 'Draft → Change Manager Review → Approved → Implemented' }
-];
-
 // ---------- catalog items (Empty for production) ----------
 export const catalogItems = [];
 
@@ -266,7 +259,7 @@ export const catalogSubcategoryFields = [
 
 export async function seedDatabase({ force = false } = {}) {
   const {
-    Role, UserS8, Workflow, CatalogCategory, CatalogSubcategory, CatalogSubcategoryField,
+    Role, UserS8, CatalogCategory, CatalogSubcategory, CatalogSubcategoryField,
     ChangeRequest, ChangeRequestApproval, AuditLog, ChangeManagerCategory
   } = models;
 
@@ -293,18 +286,16 @@ export async function seedDatabase({ force = false } = {}) {
 
   const results = [];
   results.push(await fill(Role, roles));
-  const s8Users = users.map(({ name, email, status }) => {
+  const s8Users = users.map(({ name, email }) => {
     const [firstName, ...rest] = (name || '').split(' ');
     return {
       firstName: firstName || null,
       lastName: rest.join(' ') || null,
-      email,
-      isActive: status === 'Active'
+      email
     };
   });
   results.push(await fill(UserS8, s8Users));
 
-  results.push(await fill(Workflow, workflows));
   results.push(await fill(CatalogCategory, catalogCategories));
   results.push(await fill(CatalogSubcategory, catalogSubcategories));
   results.push(await fill(CatalogSubcategoryField, catalogSubcategoryFields));
