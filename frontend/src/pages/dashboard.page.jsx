@@ -24,7 +24,7 @@ const getMetricStyle = (m) => METRIC_STYLES.find((s) => s.match(m)) || METRIC_ST
 const getGreeting = () => {
   const h = new Date().getHours();
   if (h < 12) return { text: 'Good Morning', Icon: Sunrise };
-  if (h < 17) return { text: 'Good Afternoon', Icon: Sun };
+  if (h < 16) return { text: 'Good Afternoon', Icon: Sun };
   return { text: 'Good Evening', Icon: Moon };
 };
 
