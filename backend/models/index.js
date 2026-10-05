@@ -11,7 +11,7 @@ export const Role = sequelize.define(
     description: { type: DataTypes.TEXT },
     permissions: { type: DataTypes.JSONB, defaultValue: [] }
   },
-  { tableName: 'roles', timestamps: false }
+  { tableName: 'hot_desk_roles', timestamps: false }
 );
 
 // ---------- Change requests -----------------------------
