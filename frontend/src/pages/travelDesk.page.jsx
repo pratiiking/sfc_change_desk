@@ -487,6 +487,7 @@ export default function TravelDeskPage({ onNavigate, user, travellerName = '', d
         ...values
       };
       [
+        'Traveller', 'Purpose of visit',
         'Trip type', 'Journey type',
         'Travel class', 'Bus type', 'Room type',
         'From', 'From station', 'Pickup location',
