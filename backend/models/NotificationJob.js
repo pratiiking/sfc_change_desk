@@ -33,10 +33,6 @@ export const NotificationJob = sequelize.define(
       allowNull: false,
       field: 'recipient_email'
     },
-    payload: {
-      type: DataTypes.JSONB,
-      defaultValue: {}
-    },
     status: {
       type: DataTypes.STRING(32), // 'pending', 'processing', 'sent', 'failed', 'cancelled'
       defaultValue: 'pending'

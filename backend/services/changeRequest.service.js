@@ -24,8 +24,7 @@ import {
   sendChangeRequestApprovedEmail,
   sendChangeRequestImplementedEmail,
   sendChangeRequestRejectedEmail,
-  sendManagerRejectionEmail,
-  buildChangeRequestManagerInvitationEmail
+  sendManagerRejectionEmail
 } from './mail.service.js';
 import { enqueueNotification } from './notificationQueue.service.js';
 import {
@@ -689,16 +688,13 @@ export const submitDraftChangeRequestService = async (id, actorId = null) => {
 
   const updated = await ChangeRequest.findByPk(id, { include: CR_INCLUDE });
   if (updated && updated.managerEmail) {
-    buildChangeRequestManagerInvitationEmail(updated).then((mailPayload) =>
-      enqueueNotification({
-        module: 'cr',
-        requestId: updated.id,
-        approvalCycle: updated.approvalCycle,
-        jobType: 'manager_invitation',
-        recipientEmail: updated.managerEmail,
-        payload: mailPayload
-      })
-    ).catch((err) => console.error('[mail] Queue manager invite failed:', err.message));
+    enqueueNotification({
+      module: 'cr',
+      requestId: updated.id,
+      approvalCycle: updated.approvalCycle,
+      jobType: 'manager_invitation',
+      recipientEmail: updated.managerEmail
+    }).catch((err) => console.error('[mail] Queue manager invite failed:', err.message));
   }
   return serializeChangeRequest(updated);
 };
@@ -895,16 +891,13 @@ export const createChangeRequestService = async (payload = {}) => {
 
   // Enqueue initial Stage 1 Manager Invitation
   if (validManagerEmail) {
-    buildChangeRequestManagerInvitationEmail(created).then((mailPayload) =>
-      enqueueNotification({
-        module: 'cr',
-        requestId: created.id,
-        approvalCycle: created.approvalCycle,
-        jobType: 'manager_invitation',
-        recipientEmail: validManagerEmail,
-        payload: mailPayload
-      })
-    ).catch((err) => console.error('[mail] Queue manager invite failed:', err.message));
+    enqueueNotification({
+      module: 'cr',
+      requestId: created.id,
+      approvalCycle: created.approvalCycle,
+      jobType: 'manager_invitation',
+      recipientEmail: validManagerEmail
+    }).catch((err) => console.error('[mail] Queue manager invite failed:', err.message));
   }
 
   return serialized;

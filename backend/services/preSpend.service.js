@@ -8,8 +8,7 @@ import { getBoardMemberEmails, getPreSpendAdminEmails } from './userManagement.s
 import {
   sendPreSpendCreatedEmail,
   sendPreSpendDecisionEmail,
-  sendManagerRejectionEmail,
-  buildPreSpendManagerInvitationEmail
+  sendManagerRejectionEmail
 } from './mail.service.js';
 import { enqueueNotification } from './notificationQueue.service.js';
 import { buildDateFilterClause } from '../utils/dateFilterUtils.js';
@@ -115,16 +114,13 @@ export const createPreSpendService = async (data, user) => {
 
   // Enqueue initial Stage 1 Manager Invitation
   if (validManagerEmail) {
-    buildPreSpendManagerInvitationEmail(created).then((mailPayload) =>
-      enqueueNotification({
-        module: 'prespend',
-        requestId: created.id,
-        approvalCycle: created.approvalCycle,
-        jobType: 'manager_invitation',
-        recipientEmail: validManagerEmail,
-        payload: mailPayload
-      })
-    ).catch((err) => console.error('[mail] Queue pre-spend manager invite failed:', err.message));
+    enqueueNotification({
+      module: 'prespend',
+      requestId: created.id,
+      approvalCycle: created.approvalCycle,
+      jobType: 'manager_invitation',
+      recipientEmail: validManagerEmail
+    }).catch((err) => console.error('[mail] Queue pre-spend manager invite failed:', err.message));
   }
 
   return created;

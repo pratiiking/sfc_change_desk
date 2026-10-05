@@ -8,8 +8,7 @@ import { getTravelDeskApproverEmails, getTravelAdminEmails, getBoardMemberEmails
 import {
   sendTravelCreatedEmail,
   sendTravelDecisionEmail,
-  sendManagerRejectionEmail,
-  buildTravelManagerInvitationEmail
+  sendManagerRejectionEmail
 } from './mail.service.js';
 import { enqueueNotification } from './notificationQueue.service.js';
 import { buildDateFilterClause } from '../utils/dateFilterUtils.js';
@@ -116,16 +115,13 @@ export const createTravelService = async (data, user) => {
 
   // Enqueue initial Stage 1 Manager Invitation
   if (validManagerEmail) {
-    buildTravelManagerInvitationEmail(created).then((mailPayload) =>
-      enqueueNotification({
-        module: 'travel',
-        requestId: created.id,
-        approvalCycle: created.approvalCycle,
-        jobType: 'manager_invitation',
-        recipientEmail: validManagerEmail,
-        payload: mailPayload
-      })
-    ).catch((err) => console.error('[mail] Queue travel manager invite failed:', err.message));
+    enqueueNotification({
+      module: 'travel',
+      requestId: created.id,
+      approvalCycle: created.approvalCycle,
+      jobType: 'manager_invitation',
+      recipientEmail: validManagerEmail
+    }).catch((err) => console.error('[mail] Queue travel manager invite failed:', err.message));
   }
 
   return created;

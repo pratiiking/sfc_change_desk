@@ -1,20 +1,27 @@
 import { Op } from 'sequelize';
 import { sequelize } from '../config/database.js';
 import { NotificationJob } from '../models/NotificationJob.js';
-import { sendMail } from './mail.service.js';
+import { sendMail, buildChangeRequestManagerInvitationEmail, buildPreSpendManagerInvitationEmail, buildTravelManagerInvitationEmail } from './mail.service.js';
 import { ChangeRequest, PreSpendRequest, TravelRequest } from '../models/index.js';
 import { isManagerReviewStage } from '../config/approvalWorkflow.js';
 
 let workerInterval = null;
 const CLAIM_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes lease lock
 
+// Mail HTML is rendered from the live request row at send time, not stored on the job —
+// the job only needs enough to re-fetch that row and know which template to use.
+const EMAIL_BUILDERS = {
+  cr: { manager_invitation: buildChangeRequestManagerInvitationEmail },
+  prespend: { manager_invitation: buildPreSpendManagerInvitationEmail },
+  travel: { manager_invitation: buildTravelManagerInvitationEmail }
+};
+
 export const enqueueNotification = async ({
   module,
   requestId,
   approvalCycle = 1,
   jobType,
-  recipientEmail,
-  payload = {}
+  recipientEmail
 }, tx = null) => {
   const options = tx ? { transaction: tx } : {};
   return await NotificationJob.create({
@@ -23,7 +30,6 @@ export const enqueueNotification = async ({
     approvalCycle,
     jobType,
     recipientEmail,
-    payload,
     status: 'pending'
   }, options);
 };
@@ -68,27 +74,16 @@ export const processNotificationJobs = async () => {
 
       if (updated === 0) continue; // Claimed by another worker
 
-      // Re-verify request stage and cycle before sending
+      // Re-verify request stage and cycle before sending, using the live row
       try {
-        let isEligible = true;
-        if (job.module === 'cr') {
-          const cr = await ChangeRequest.findByPk(job.requestId);
-          if (!cr) isEligible = false;
-          else if (job.jobType === 'manager_invitation' || job.jobType === 'manager_reminder') {
-            if (!isManagerReviewStage(cr.approvalStage) || cr.approvalCycle !== job.approvalCycle) isEligible = false;
-          }
-        } else if (job.module === 'prespend') {
-          const ps = await PreSpendRequest.findByPk(job.requestId);
-          if (!ps) isEligible = false;
-          else if (job.jobType === 'manager_invitation' || job.jobType === 'manager_reminder') {
-            if (!isManagerReviewStage(ps.approvalStage) || ps.approvalCycle !== job.approvalCycle) isEligible = false;
-          }
-        } else if (job.module === 'travel') {
-          const tr = await TravelRequest.findByPk(job.requestId);
-          if (!tr) isEligible = false;
-          else if (job.jobType === 'manager_invitation' || job.jobType === 'manager_reminder') {
-            if (!isManagerReviewStage(tr.approvalStage) || tr.approvalCycle !== job.approvalCycle) isEligible = false;
-          }
+        let request = null;
+        if (job.module === 'cr') request = await ChangeRequest.findByPk(job.requestId);
+        else if (job.module === 'prespend') request = await PreSpendRequest.findByPk(job.requestId);
+        else if (job.module === 'travel') request = await TravelRequest.findByPk(job.requestId);
+
+        let isEligible = Boolean(request);
+        if (request && (job.jobType === 'manager_invitation' || job.jobType === 'manager_reminder')) {
+          if (!isManagerReviewStage(request.approvalStage) || request.approvalCycle !== job.approvalCycle) isEligible = false;
         }
 
         if (!isEligible) {
@@ -96,13 +91,12 @@ export const processNotificationJobs = async () => {
           continue;
         }
 
-        const mailPayload = job.payload || {};
-        const safeAttachments = (mailPayload.attachments || []).map((att) => {
-          if (att && att.content && typeof att.content === 'object' && att.content.type === 'Buffer' && Array.isArray(att.content.data)) {
-            return { ...att, content: Buffer.from(att.content.data) };
-          }
-          return att;
-        });
+        const buildMail = EMAIL_BUILDERS[job.module]?.[job.jobType];
+        if (!buildMail) {
+          await job.update({ status: 'failed', lastError: `No email builder for ${job.module}/${job.jobType}` });
+          continue;
+        }
+        const mailPayload = await buildMail(request);
 
         const sendRes = await sendMail({
           to: job.recipientEmail,
@@ -110,7 +104,7 @@ export const processNotificationJobs = async () => {
           subject: mailPayload.subject,
           text: mailPayload.text,
           html: mailPayload.html,
-          attachments: safeAttachments.length ? safeAttachments : undefined
+          attachments: mailPayload.attachments
         });
 
         if (sendRes.sent || sendRes.skipped) {
