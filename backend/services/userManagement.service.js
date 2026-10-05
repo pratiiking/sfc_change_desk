@@ -2,9 +2,40 @@ import { Op } from 'sequelize';
 import { sequelize, Role, CatalogCategory, ChangeManagerCategory, ChangeImplementerCategory } from '../models/index.js';
 import { ChangeUser } from '../models/ChangeUser.js';
 import { Employee } from '../models/Employee.js';
+import { UserS8 } from '../models/UserS8.js';
 import { IdentityResolver } from './identityResolver.service.js';
 import { addAuditLog } from './auditLog.service.js';
 import { normalizeRole, ROLE } from '../config/constants.js';
+
+// Keeps hot_desk_users in sync with change_user's role: anything above
+// Requester gets (or keeps) a hot_desk_users row carrying that role; demoting
+// back to Requester removes it, since Requester is the implicit default for
+// everyone in the employee directory and doesn't need an explicit row.
+const syncHotDeskUserRole = async (email, name, roleId) => {
+  if (!email) return;
+  const emailMatch = sequelize.where(sequelize.fn('LOWER', sequelize.col('email')), email.trim().toLowerCase());
+  try {
+    if (roleId === ROLE.REQUESTER) {
+      await UserS8.destroy({ where: emailMatch });
+      return;
+    }
+    const existing = await UserS8.findOne({ where: emailMatch });
+    if (existing) {
+      existing.roleId = roleId;
+      await existing.save();
+    } else {
+      const [firstName, ...rest] = (name || '').trim().split(' ');
+      await UserS8.create({
+        email: email.trim().toLowerCase(),
+        firstName: firstName || null,
+        lastName: rest.join(' ') || null,
+        roleId
+      });
+    }
+  } catch (err) {
+    console.warn('[hot_desk_users sync] Notice:', err.message);
+  }
+};
 
 // ---------- Category Assignments for Change Managers ----------
 
@@ -505,6 +536,7 @@ export const updateSettingsUserService = async (userKey, payload = {}, meta = {}
   if (payload.status) user.status = payload.status;
 
   await user.save();
+  await syncHotDeskUserRole(user.email, user.name, user.roleId);
 
   const activeRoleIds = normalizedRoles.map(r => r.roleId);
   const hasCM = activeRoleIds.includes(ROLE.CHANGE_MANAGER) || user.roleId === ROLE.CHANGE_MANAGER;
@@ -588,6 +620,7 @@ export const createSettingsUserService = async (payload = {}, meta = {}) => {
       metadata: userMeta
     });
   }
+  await syncHotDeskUserRole(changeUser.email, changeUser.name, changeUser.roleId);
 
   const activeRoleIds = normalizedRoles.map(r => r.roleId);
   const hasCM = activeRoleIds.includes(ROLE.CHANGE_MANAGER);
@@ -653,6 +686,7 @@ export const deleteSettingsUserService = async (userKey, meta = {}) => {
   user.metadata = currentMeta;
   user.changed('metadata', true);
   await user.save();
+  await syncHotDeskUserRole(user.email, user.name, user.roleId);
 
   // Clear any assigned category mappings
   await Promise.all([
