@@ -1,40 +1,23 @@
 import { Op } from 'sequelize';
 import { sequelize, Role, CatalogCategory, ChangeManagerCategory, ChangeImplementerCategory } from '../models/index.js';
-import { ChangeUser } from '../models/ChangeUser.js';
 import { Employee } from '../models/Employee.js';
 import { UserS8 } from '../models/UserS8.js';
 import { IdentityResolver } from './identityResolver.service.js';
 import { addAuditLog } from './auditLog.service.js';
 import { normalizeRole, ROLE } from '../config/constants.js';
 
-// Keeps hot_desk_users in sync with change_user's role: anything above
-// Requester gets (or keeps) a hot_desk_users row carrying that role; demoting
-// back to Requester removes it, since Requester is the implicit default for
-// everyone in the employee directory and doesn't need an explicit row.
-const syncHotDeskUserRole = async (email, name, roleId) => {
-  if (!email) return;
-  const emailMatch = sequelize.where(sequelize.fn('LOWER', sequelize.col('email')), email.trim().toLowerCase());
-  try {
-    if (roleId === ROLE.REQUESTER) {
-      await UserS8.destroy({ where: emailMatch });
-      return;
-    }
-    const existing = await UserS8.findOne({ where: emailMatch });
-    if (existing) {
-      existing.roleId = roleId;
-      await existing.save();
-    } else {
-      const [firstName, ...rest] = (name || '').trim().split(' ');
-      await UserS8.create({
-        email: email.trim().toLowerCase(),
-        firstName: firstName || null,
-        lastName: rest.join(' ') || null,
-        roleId
-      });
-    }
-  } catch (err) {
-    console.warn('[hot_desk_users sync] Notice:', err.message);
+const findUserS8ByKey = async (userKey) => {
+  const rawId = String(userKey).replace(/^(S8-|EMP-|usr-)/, '');
+  if (/^\d+$/.test(rawId)) {
+    const user = await UserS8.findByPk(Number(rawId));
+    if (user) return user;
   }
+  if (String(userKey).includes('@')) {
+    return UserS8.findOne({
+      where: sequelize.where(sequelize.fn('LOWER', sequelize.col('email')), String(userKey).trim().toLowerCase())
+    });
+  }
+  return null;
 };
 
 // ---------- Category Assignments for Change Managers ----------
@@ -191,7 +174,7 @@ export const getApproverEmails = async (categoryNameOrId = null) => {
     return uniqueEmails;
   }
 
-  const admins = await ChangeUser.findAll({
+  const admins = await UserS8.findAll({
     where: {
       roleId: { [Op.in]: [ROLE.SUPER_ADMIN, ROLE.ADMIN_LEGACY, ROLE.CHANGE_ADMIN] },
       status: 'Active'
@@ -241,7 +224,7 @@ export const getImplementerEmails = async (categoryNameOrId = null) => {
     return uniqueEmails;
   }
 
-  const implementers = await ChangeUser.findAll({
+  const implementers = await UserS8.findAll({
     where: {
       roleId: { [Op.in]: [ROLE.CHANGE_IMPLEMENTER, ROLE.SUPER_ADMIN, ROLE.ADMIN_LEGACY, ROLE.CHANGE_ADMIN] },
       status: 'Active'
@@ -253,59 +236,21 @@ export const getImplementerEmails = async (categoryNameOrId = null) => {
 };
 
 export const getBoardMemberEmails = async () => {
-  const users = await ChangeUser.findAll({
-    where: { status: 'Active' },
+  const users = await UserS8.findAll({
+    where: { status: 'Active', roleId: ROLE.BOARD },
     raw: true
   });
-
-  const boardEmails = [];
-  for (const u of users) {
-    const rawRoles = u.metadata?.roles || [];
-    const roleIds = [
-      u.roleId,
-      ...(Array.isArray(rawRoles) ? rawRoles.map(r => (typeof r === 'string' ? r : r.roleId || r.role)) : [])
-    ].filter(Boolean);
-
-    const isBoard = roleIds.some(r => r === ROLE.BOARD || r === 'role-board' || String(r).toLowerCase().includes('board'));
-    if (isBoard && u.email) {
-      boardEmails.push(u.email.trim().toLowerCase());
-    }
-  }
-
-  return Array.from(new Set(boardEmails.filter(Boolean)));
+  return Array.from(new Set(users.map(u => (u.email || '').trim().toLowerCase()).filter(Boolean)));
 };
 
 export const getTravelDeskApproverEmails = async (isShortNotice = false) => {
-  const users = await ChangeUser.findAll({
-    where: { status: 'Active' },
+  const roleIds = isShortNotice ? [ROLE.TRAVEL_ADMIN, ROLE.BOARD] : [ROLE.TRAVEL_ADMIN];
+  const users = await UserS8.findAll({
+    where: { status: 'Active', roleId: { [Op.in]: roleIds } },
     raw: true
   });
 
-  const approverEmails = [];
-  for (const u of users) {
-    const rawRoles = u.metadata?.roles || [];
-    const roleIds = [
-      u.roleId,
-      ...(Array.isArray(rawRoles) ? rawRoles.map(r => (typeof r === 'string' ? r : r.roleId || r.role)) : [])
-    ].filter(Boolean);
-
-    const isTravelAdmin = roleIds.some(r => r === ROLE.TRAVEL_ADMIN || String(r).toLowerCase().includes('travel'));
-    const isBoard = roleIds.some(r => r === ROLE.BOARD || r === 'role-board' || String(r).toLowerCase().includes('board'));
-
-    // If short notice or requires board approval, notify Board members + Travel Admins
-    if (isShortNotice) {
-      if ((isBoard || isTravelAdmin) && u.email) {
-        approverEmails.push(u.email.trim().toLowerCase());
-      }
-    } else {
-      // Normal booking: notify Travel Desk Admins (and fallback to Board if no Travel Admin configured)
-      if (isTravelAdmin && u.email) {
-        approverEmails.push(u.email.trim().toLowerCase());
-      }
-    }
-  }
-
-  const unique = Array.from(new Set(approverEmails.filter(Boolean)));
+  const unique = Array.from(new Set(users.map(u => (u.email || '').trim().toLowerCase()).filter(Boolean)));
   if (unique.length > 0) return unique;
 
   // Fallback to board members if no travel admin found
@@ -313,74 +258,29 @@ export const getTravelDeskApproverEmails = async (isShortNotice = false) => {
 };
 
 export const getPreSpendAdminEmails = async () => {
-  const users = await ChangeUser.findAll({
-    where: { status: 'Active' },
+  const users = await UserS8.findAll({
+    where: { status: 'Active', roleId: ROLE.PRESPEND_ADMIN },
     raw: true
   });
-  const adminEmails = [];
-  for (const u of users) {
-    const rawRoles = u.metadata?.roles || [];
-    const roleIds = [
-      u.roleId,
-      ...(Array.isArray(rawRoles) ? rawRoles.map(r => (typeof r === 'string' ? r : r.roleId || r.role)) : [])
-    ].filter(Boolean);
-    const isPreSpendAdmin = roleIds.some(r => r === ROLE.PRESPEND_ADMIN || String(r).toLowerCase().includes('prespend') || String(r).toLowerCase().includes('spend'));
-    if (isPreSpendAdmin && u.email) {
-      adminEmails.push(u.email.trim().toLowerCase());
-    }
-  }
-  return Array.from(new Set(adminEmails.filter(Boolean)));
+  return Array.from(new Set(users.map(u => (u.email || '').trim().toLowerCase()).filter(Boolean)));
 };
 
 export const getTravelAdminEmails = async () => {
-  const users = await ChangeUser.findAll({
-    where: { status: 'Active' },
+  const users = await UserS8.findAll({
+    where: { status: 'Active', roleId: ROLE.TRAVEL_ADMIN },
     raw: true
   });
-  const adminEmails = [];
-  for (const u of users) {
-    const rawRoles = u.metadata?.roles || [];
-    const roleIds = [
-      u.roleId,
-      ...(Array.isArray(rawRoles) ? rawRoles.map(r => (typeof r === 'string' ? r : r.roleId || r.role)) : [])
-    ].filter(Boolean);
-    const isTravelAdmin = roleIds.some(r => r === ROLE.TRAVEL_ADMIN || String(r).toLowerCase().includes('travel'));
-    if (isTravelAdmin && u.email) {
-      adminEmails.push(u.email.trim().toLowerCase());
-    }
-  }
-  return Array.from(new Set(adminEmails.filter(Boolean)));
+  return Array.from(new Set(users.map(u => (u.email || '').trim().toLowerCase()).filter(Boolean)));
 };
 
 export const getPreSpendApproverEmails = async (isBoardRequired = false) => {
-  const users = await ChangeUser.findAll({
-    where: { status: 'Active' },
+  const roleIds = isBoardRequired ? [ROLE.PRESPEND_ADMIN, ROLE.BOARD] : [ROLE.PRESPEND_ADMIN];
+  const users = await UserS8.findAll({
+    where: { status: 'Active', roleId: { [Op.in]: roleIds } },
     raw: true
   });
 
-  const approverEmails = [];
-  for (const u of users) {
-    const rawRoles = u.metadata?.roles || [];
-    const roleIds = [
-      u.roleId,
-      ...(Array.isArray(rawRoles) ? rawRoles.map(r => (typeof r === 'string' ? r : r.roleId || r.role)) : [])
-    ].filter(Boolean);
-
-    const isPreSpendAdmin = roleIds.some(r => r === ROLE.PRESPEND_ADMIN || String(r).toLowerCase().includes('prespend') || String(r).toLowerCase().includes('spend'));
-    const isBoard = roleIds.some(r => r === ROLE.BOARD || r === 'role-board' || String(r).toLowerCase().includes('board'));
-
-    if (isBoardRequired) {
-      if ((isBoard || isPreSpendAdmin) && u.email) {
-        approverEmails.push(u.email.trim().toLowerCase());
-      }
-    } else {
-      if (isPreSpendAdmin && u.email) {
-        approverEmails.push(u.email.trim().toLowerCase());
-      }
-    }
-  }
-
-  const unique = Array.from(new Set(approverEmails.filter(Boolean)));
+  const unique = Array.from(new Set(users.map(u => (u.email || '').trim().toLowerCase()).filter(Boolean)));
   if (unique.length > 0) return unique;
 
   return getBoardMemberEmails();
@@ -400,7 +300,7 @@ export const getSettingsUsersService = async () => {
     ROLE.BOARD
   ];
 
-  const users = await ChangeUser.findAll({
+  const users = await UserS8.findAll({
     where: {
       roleId: { [Op.in]: PRIVILEGED_ROLE_IDS },
       status: { [Op.ne]: 'Inactive' }
@@ -431,22 +331,8 @@ export const getSettingsUsersService = async () => {
   for (const u of users) {
     const userKey = String(u.id);
     const email = (u.email || '').trim().toLowerCase();
-    const assignedCats = u.roleId === ROLE.CHANGE_IMPLEMENTER
-      ? (ciMap.get(userKey) || ciMap.get(`S8-${u.id}`) || ciMap.get(email) || [])
-      : (cmMap.get(userKey) || cmMap.get(`S8-${u.id}`) || cmMap.get(email) || []);
-
-    const isInUserTable = await IdentityResolver.checkUserInUserTable(email);
-
-    // Multi-role extraction
-    const rawRoles = u.metadata?.roles || [];
-    let rolesList = Array.isArray(rawRoles) && rawRoles.length > 0
-      ? rawRoles.map(r => typeof r === 'string' ? normalizeRole(r) : r)
-      : [{ roleId: u.roleId, roleName: u.roleName }];
-
-    // Ensure primary role is included if missing
-    if (!rolesList.some(r => r.roleId === u.roleId)) {
-      rolesList.unshift({ roleId: u.roleId, roleName: u.roleName });
-    }
+    const name = [u.firstName, u.lastName].filter(Boolean).join(' ') || u.email;
+    const roleName = normalizeRole(u.roleId)?.roleName || 'Requester';
 
     // Fetch authoritative employee ID from Employee directory by email
     let empRecord = null;
@@ -457,7 +343,7 @@ export const getSettingsUsersService = async () => {
       });
     }
 
-    const authoritativeEmpId = empRecord?.empId || u.metadata?.empId || (u.metadata?.employeeId ? String(u.metadata.employeeId) : '');
+    const authoritativeEmpId = empRecord?.empId || '';
     const userCmCats = cmMap.get(userKey) || cmMap.get(`S8-${u.id}`) || cmMap.get(email) || [];
     const userCiCats = ciMap.get(userKey) || ciMap.get(`S8-${u.id}`) || ciMap.get(email) || [];
 
@@ -466,22 +352,22 @@ export const getSettingsUsersService = async () => {
       userKey,
       sourceId: u.id,
       identityType: 'CHANGE_USER',
-      name: u.name || u.email,
-      displayName: u.name || u.email,
+      name,
+      displayName: name,
       email: u.email,
       designation: u.designation || '',
       empId: authoritativeEmpId,
       employeeId: authoritativeEmpId,
       employeeBusinessId: authoritativeEmpId,
       roleId: u.roleId,
-      role: u.roleName,
-      roles: rolesList,
-      rolesList: rolesList.map(r => r.roleId),
+      role: roleName,
+      roles: [{ roleId: u.roleId, roleName }],
+      rolesList: [u.roleId],
       status: u.status || 'Active',
       categoryIds: Array.from(new Set([...userCmCats, ...userCiCats])),
       cmCategoryIds: userCmCats,
       ciCategoryIds: userCiCats,
-      isInUserTable
+      isInUserTable: true
     });
   }
 
@@ -489,58 +375,33 @@ export const getSettingsUsersService = async () => {
 };
 
 export const updateSettingsUserService = async (userKey, payload = {}, meta = {}) => {
-  const rawId = String(userKey).replace(/^(S8-|EMP-|usr-)/, '');
-  let user = await ChangeUser.findByPk(rawId);
-  if (!user && String(userKey).includes('@')) {
-    user = await ChangeUser.findOne({
-      where: sequelize.where(sequelize.fn('LOWER', sequelize.col('email')), String(userKey).trim().toLowerCase())
-    });
-  }
+  const user = await findUserS8ByKey(userKey);
 
   if (!user) {
-    const err = new Error(`User ${userKey} not found in change_user`);
+    const err = new Error(`User ${userKey} not found in hot_desk_users`);
     err.statusCode = 404;
     throw err;
   }
 
-  // Handle multi-role list if passed in payload
-  let normalizedRoles = [];
-  const currentMeta = user.metadata && typeof user.metadata === 'object' ? { ...user.metadata } : {};
-  if (Array.isArray(payload.roles) && payload.roles.length > 0) {
-    normalizedRoles = payload.roles.map(r => typeof r === 'string' ? normalizeRole(r) : normalizeRole(r.roleId || r.roleName || r.role)).filter(Boolean);
-    const primary = normalizedRoles[0];
-    if (primary) {
-      user.roleId = primary.roleId;
-      user.roleName = primary.roleName;
-    }
-    currentMeta.roles = normalizedRoles;
-  } else if (payload.roleId || payload.role) {
-    const matchedRole = normalizeRole(payload.roleId || payload.role);
-    if (matchedRole) {
-      user.roleId = matchedRole.roleId;
-      user.roleName = matchedRole.roleName;
-      normalizedRoles = [matchedRole];
-      currentMeta.roles = normalizedRoles;
-    }
+  const matchedRole = payload.roleId || payload.role
+    ? normalizeRole(payload.roleId || payload.role)
+    : null;
+  if (matchedRole) {
+    user.roleId = matchedRole.roleId;
   }
 
-  if (payload.empId || payload.employeeId) {
-    currentMeta.empId = String(payload.empId || payload.employeeId).trim();
+  if (payload.name) {
+    const [firstName, ...rest] = String(payload.name).trim().split(' ');
+    user.firstName = firstName || null;
+    user.lastName = rest.join(' ') || null;
   }
-
-  user.metadata = currentMeta;
-  user.changed('metadata', true);
-
-  if (payload.name) user.name = payload.name;
   if (payload.designation) user.designation = payload.designation;
   if (payload.status) user.status = payload.status;
 
   await user.save();
-  await syncHotDeskUserRole(user.email, user.name, user.roleId);
 
-  const activeRoleIds = normalizedRoles.map(r => r.roleId);
-  const hasCM = activeRoleIds.includes(ROLE.CHANGE_MANAGER) || user.roleId === ROLE.CHANGE_MANAGER;
-  const hasCI = activeRoleIds.includes(ROLE.CHANGE_IMPLEMENTER) || user.roleId === ROLE.CHANGE_IMPLEMENTER;
+  const hasCM = user.roleId === ROLE.CHANGE_MANAGER;
+  const hasCI = user.roleId === ROLE.CHANGE_IMPLEMENTER;
 
   if (hasCM) {
     const cmCats = payload.cmCategoryIds || payload.cmCategories || payload.categoryIds || [];
@@ -556,16 +417,18 @@ export const updateSettingsUserService = async (userKey, payload = {}, meta = {}
     await updateChangeImplementerCategoriesService(user.id, []);
   }
 
+  const name = [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email;
+  const roleName = normalizeRole(user.roleId)?.roleName || 'Requester';
   const actorStr = meta.actorId ? String(meta.actorId) : 'SYSTEM';
   await addAuditLog({
     actorId: actorStr,
     action: 'User Role Updated',
     ref: String(user.id),
-    detail: `Updated role(s) to ${normalizedRoles.map(r => r.roleName).join(', ') || user.roleName} for ${user.name} (${user.email}).`
+    detail: `Updated role to ${roleName} for ${name} (${user.email}).`
   }).catch((logErr) => console.warn('[auditLog] Notice:', logErr.message));
 
   IdentityResolver.clearCache();
-  const updatedRes = await IdentityResolver.resolveByKey(user.id);
+  const updatedRes = await IdentityResolver.resolveByKey(String(user.id));
   return updatedRes.identity;
 };
 
@@ -577,65 +440,48 @@ export const createSettingsUserService = async (payload = {}, meta = {}) => {
     throw e;
   }
 
-  let normalizedRoles = [];
-  if (Array.isArray(payload.roles) && payload.roles.length > 0) {
-    normalizedRoles = payload.roles.map(r => typeof r === 'string' ? normalizeRole(r) : normalizeRole(r.roleId || r.roleName || r.role)).filter(Boolean);
-  } else {
-    normalizedRoles = [normalizeRole(payload.roleId || payload.role || ROLE.REQUESTER)];
-  }
-
-  const primaryRole = normalizedRoles[0] || { roleId: ROLE.REQUESTER, roleName: 'Requester' };
+  const primaryRole = normalizeRole(payload.roleId || payload.role) || { roleId: ROLE.REQUESTER, roleName: 'Requester' };
   const rawName = (payload.name || '').trim();
   const displayName = rawName || email.split('@')[0];
+  const [firstName, ...rest] = displayName.split(' ');
+  const lastName = rest.join(' ') || null;
 
-  let changeUser = await ChangeUser.findOne({
+  let user = await UserS8.findOne({
     where: sequelize.where(sequelize.fn('LOWER', sequelize.col('email')), email)
   });
 
-  const customEmpId = payload.empId || payload.employeeId ? String(payload.empId || payload.employeeId).trim() : null;
-
-  if (changeUser) {
-    changeUser.name = displayName;
-    changeUser.roleId = primaryRole.roleId;
-    changeUser.roleName = primaryRole.roleName;
-    changeUser.status = payload.status || 'Active';
-    if (payload.designation) changeUser.designation = payload.designation;
-    const currentMeta = changeUser.metadata && typeof changeUser.metadata === 'object' ? { ...changeUser.metadata } : {};
-    currentMeta.roles = normalizedRoles;
-    if (customEmpId) currentMeta.empId = customEmpId;
-    changeUser.metadata = currentMeta;
-    changeUser.changed('metadata', true);
-    await changeUser.save();
+  if (user) {
+    user.firstName = firstName || null;
+    user.lastName = lastName;
+    user.roleId = primaryRole.roleId;
+    user.status = payload.status || 'Active';
+    if (payload.designation) user.designation = payload.designation;
+    await user.save();
   } else {
-    const userMeta = { roles: normalizedRoles };
-    if (customEmpId) userMeta.empId = customEmpId;
-    changeUser = await ChangeUser.create({
-      name: displayName,
+    user = await UserS8.create({
+      firstName: firstName || null,
+      lastName,
       email,
       roleId: primaryRole.roleId,
-      roleName: primaryRole.roleName,
       designation: payload.designation || '',
       status: 'Active',
-      invitedBy: meta.invitedByName || meta.actorId || 'Super Admin',
-      metadata: userMeta
+      invitedBy: meta.invitedByName || meta.actorId || 'Super Admin'
     });
   }
-  await syncHotDeskUserRole(changeUser.email, changeUser.name, changeUser.roleId);
 
-  const activeRoleIds = normalizedRoles.map(r => r.roleId);
-  const hasCM = activeRoleIds.includes(ROLE.CHANGE_MANAGER);
-  const hasCI = activeRoleIds.includes(ROLE.CHANGE_IMPLEMENTER);
+  const hasCM = primaryRole.roleId === ROLE.CHANGE_MANAGER;
+  const hasCI = primaryRole.roleId === ROLE.CHANGE_IMPLEMENTER;
 
   if (hasCM) {
     const cmCats = payload.cmCategoryIds || payload.cmCategories || payload.categoryIds || [];
     if (cmCats.length > 0) {
-      await updateChangeManagerCategoriesService(changeUser.id, cmCats);
+      await updateChangeManagerCategoriesService(user.id, cmCats);
     }
   }
   if (hasCI) {
     const ciCats = payload.ciCategoryIds || payload.ciCategories || payload.categoryIds || [];
     if (ciCats.length > 0) {
-      await updateChangeImplementerCategoriesService(changeUser.id, ciCats);
+      await updateChangeImplementerCategoriesService(user.id, ciCats);
     }
   }
 
@@ -643,29 +489,23 @@ export const createSettingsUserService = async (payload = {}, meta = {}) => {
   await addAuditLog({
     actorId: actorStr,
     action: 'User Invited / Added',
-    ref: String(changeUser.id),
-    detail: `Invited ${displayName} (${email}) with role(s): ${normalizedRoles.map(r => r.roleName).join(', ')}.`
+    ref: String(user.id),
+    detail: `Invited ${displayName} (${email}) with role: ${primaryRole.roleName}.`
   }).catch((logErr) => console.warn('[auditLog] Notice:', logErr.message));
 
   // User invitation emails disabled per configuration
   // sendUserInviteEmail({ ... });
 
   IdentityResolver.clearCache();
-  const resolved = await IdentityResolver.resolveByKey(changeUser.id);
+  const resolved = await IdentityResolver.resolveByKey(String(user.id));
   return resolved.identity;
 };
 
 export const deleteSettingsUserService = async (userKey, meta = {}) => {
-  const rawId = String(userKey).replace(/^(S8-|EMP-|usr-)/, '');
-  let user = await ChangeUser.findByPk(rawId);
-  if (!user && String(userKey).includes('@')) {
-    user = await ChangeUser.findOne({
-      where: sequelize.where(sequelize.fn('LOWER', sequelize.col('email')), String(userKey).trim().toLowerCase())
-    });
-  }
+  const user = await findUserS8ByKey(userKey);
 
   if (!user) {
-    const err = new Error(`User ${userKey} not found in change_user`);
+    const err = new Error(`User ${userKey} not found in hot_desk_users`);
     err.statusCode = 404;
     throw err;
   }
@@ -677,16 +517,12 @@ export const deleteSettingsUserService = async (userKey, meta = {}) => {
     throw err;
   }
 
+  const name = [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email;
+
   // Set status to Inactive and revoke privileged roles
   user.status = 'Inactive';
   user.roleId = ROLE.REQUESTER;
-  user.roleName = 'Requester';
-  const currentMeta = user.metadata && typeof user.metadata === 'object' ? { ...user.metadata } : {};
-  currentMeta.roles = [{ roleId: ROLE.REQUESTER, roleName: 'Requester' }];
-  user.metadata = currentMeta;
-  user.changed('metadata', true);
   await user.save();
-  await syncHotDeskUserRole(user.email, user.name, user.roleId);
 
   // Clear any assigned category mappings
   await Promise.all([
@@ -699,7 +535,7 @@ export const deleteSettingsUserService = async (userKey, meta = {}) => {
     actorId: actorStr,
     action: 'User Deactivated',
     ref: String(user.id),
-    detail: `Deactivated user ${user.name} (${user.email}) and revoked all privileged roles.`
+    detail: `Deactivated user ${name} (${user.email}) and revoked all privileged roles.`
   }).catch((logErr) => console.warn('[auditLog] Notice:', logErr.message));
 
   IdentityResolver.clearCache();
@@ -709,7 +545,7 @@ export const deleteSettingsUserService = async (userKey, meta = {}) => {
 export const getSettingsRolesService = async () => {
   const [rows, users] = await Promise.all([
     Role.findAll({ order: [['id', 'ASC']] }),
-    ChangeUser.findAll({ attributes: ['roleId'], raw: true })
+    UserS8.findAll({ attributes: ['roleId'], raw: true })
   ]);
 
   const counts = {};
@@ -748,7 +584,7 @@ export const updateRolePermissionsService = async (roleId, permissions = [], act
     detail: `Updated permissions for role ${role.name}.`
   });
 
-  const usersCount = await ChangeUser.count({ where: { roleId } });
+  const usersCount = await UserS8.count({ where: { roleId } });
   const plainRole = role.get ? role.get({ plain: true }) : role;
   return {
     id: plainRole.id,

@@ -269,24 +269,20 @@ export const handleMicrosoftCallbackService = async (code) => {
   // 3. Resolve ChangeDesk Identity
   const identity = await authenticate(email);
 
-  // 4. Update Microsoft login metadata in ChangeUser
+  // 4. Update Microsoft login metadata in hot_desk_users, if this person has a row
   try {
-    const { ChangeUser } = await import('../models/ChangeUser.js');
-    const changeUser = await ChangeUser.findOne({
+    const { UserS8 } = await import('../models/UserS8.js');
+    const s8User = await UserS8.findOne({
       where: sequelize.where(sequelize.fn('LOWER', sequelize.col('email')), email)
     });
 
-    if (changeUser) {
-      const meta = changeUser.metadata && typeof changeUser.metadata === 'object' ? { ...changeUser.metadata } : {};
-      meta.microsoftId = microsoftId || meta.microsoftId;
-      meta.lastLogin = new Date().toISOString();
-      meta.loginType = 'Microsoft SSO';
-      changeUser.metadata = meta;
-      if (typeof changeUser.changed === 'function') changeUser.changed('metadata', true);
-      await changeUser.save();
+    if (s8User) {
+      s8User.microsoftId = microsoftId || s8User.microsoftId;
+      s8User.lastLogin = new Date();
+      await s8User.save();
     }
   } catch (dbErr) {
-    console.warn('[Microsoft SSO] Could not update ChangeUser metadata:', dbErr.message);
+    console.warn('[Microsoft SSO] Could not update hot_desk_users metadata:', dbErr.message);
   }
 
   // 5. Issue ChangeDesk JWT session token

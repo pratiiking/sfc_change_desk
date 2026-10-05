@@ -95,9 +95,8 @@ import { CatalogSubcategoryField } from './CatalogSubcategoryField.js';
 import { Employee } from './Employee.js';
 import { UserS8 } from './UserS8.js';
 import { UserAppRole } from './UserAppRole.js';
-import { ChangeUser } from './ChangeUser.js';
 
-export { ChangeRequestApproval, CatalogCategory, CatalogSubcategory, CatalogSubcategoryField, Employee, UserS8, UserAppRole, ChangeUser };
+export { ChangeRequestApproval, CatalogCategory, CatalogSubcategory, CatalogSubcategoryField, Employee, UserS8, UserAppRole };
 
 Role.hasMany(UserAppRole, { foreignKey: 'roleId', as: 'appUserRoles' });
 UserAppRole.belongsTo(Role, { foreignKey: 'roleId', as: 'role' });
@@ -167,7 +166,6 @@ export const models = {
   AuditLog,
   ChangeManagerCategory,
   ChangeImplementerCategory,
-  ChangeUser,
   Employee,
   UserS8,
   UserAppRole,

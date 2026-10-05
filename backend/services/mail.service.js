@@ -15,19 +15,16 @@ import nodemailer from 'nodemailer';
 import jwt from 'jsonwebtoken';
 import { ROLE } from '../config/constants.js';
 import { Op } from 'sequelize';
-import { ChangeUser } from '../models/ChangeUser.js';
+import { UserS8 } from '../models/UserS8.js';
 
 const env = process.env;
 
 const fetchSuperAdminEmails = async () => {
   try {
-    const superAdmins = await ChangeUser.findAll({
+    const superAdmins = await UserS8.findAll({
       where: {
         status: { [Op.iLike]: 'Active' },
-        [Op.or]: [
-          { roleId: ROLE.SUPER_ADMIN },
-          { roleName: { [Op.iLike]: '%super%' } }
-        ]
+        roleId: ROLE.SUPER_ADMIN
       },
       attributes: ['email'],
       raw: true

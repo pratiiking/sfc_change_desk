@@ -73,7 +73,6 @@ const buildAuditWhereForFilter = (filter) => {
 };
 
 const resolveAndSerializeAuditRows = async (rows) => {
-  const { ChangeUser } = await import('../models/ChangeUser.js');
   const actorKeys = [...new Set(rows.map((r) => r.actorId).filter(Boolean))];
   const identityMap = new Map();
   await Promise.all(
@@ -81,19 +80,6 @@ const resolveAndSerializeAuditRows = async (rows) => {
       const res = await IdentityResolver.resolveByKey(k);
       if (res.status === 'SUCCESS' && res.identity) {
         identityMap.set(k, res.identity);
-        return;
-      }
-
-      // Fallback to direct ChangeUser lookup
-      const rawId = String(k).replace(/^(S8-|EMP-|usr-)/, '');
-      const user = await ChangeUser.findByPk(rawId);
-      if (user) {
-        identityMap.set(k, {
-          displayName: user.name,
-          name: user.name,
-          email: user.email,
-          employeeBusinessId: user.id
-        });
       }
     })
   );

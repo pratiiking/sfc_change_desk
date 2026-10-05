@@ -38,6 +38,20 @@ export const UserS8 = sequelize.define(
       allowNull: false,
       field: 'role_id'
     },
+    status: {
+      type: DataTypes.STRING,
+      allowNull: true,
+      defaultValue: 'Active'
+    },
+    designation: {
+      type: DataTypes.STRING,
+      allowNull: true
+    },
+    invitedBy: {
+      type: DataTypes.STRING,
+      allowNull: true,
+      field: 'invited_by'
+    },
     createdAt: {
       type: DataTypes.DATE,
       field: 'created_at'
