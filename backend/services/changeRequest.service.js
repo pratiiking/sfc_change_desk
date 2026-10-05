@@ -7,7 +7,6 @@ import {
   CatalogSubcategoryField,
   ChangeRequest,
   ChangeRequestApproval,
-  AppConfig,
   ChangeManagerCategory,
   ChangeImplementerCategory
 } from '../models/index.js';
@@ -38,27 +37,6 @@ import {
 const CR_INCLUDE = [
   { model: ChangeRequestApproval, as: 'approvals' }
 ];
-
-// ---------- AppConfig singletons --------------------------
-
-const getConfig = async (key, fallback = {}) => {
-  const row = await AppConfig.findByPk(key);
-  return row ? row.value : fallback;
-};
-
-const updateConfig = async (key, mutate, tx) => {
-  const row = await AppConfig.findByPk(key, { transaction: tx });
-  const current = row ? row.value : {};
-  const next = { ...current, ...mutate(current) };
-  if (row) {
-    row.value = next;
-    row.changed('value', true);
-    await row.save({ transaction: tx });
-  } else {
-    await AppConfig.create({ key, value: next }, { transaction: tx });
-  }
-  return next;
-};
 
 export const getChangeRequestsService = async () => {
   const rows = await ChangeRequest.findAll({
@@ -360,8 +338,6 @@ export const getFilteredChangeRequests = async ({
     }
   }
 
-  const approvalCommentsMap = await getConfig('cr_approval_comments', {});
-
   const requesterIds = [...new Set(rows.map((cr) => cr.requesterId).filter(Boolean).map(String))];
   const requesterResults = await Promise.all(requesterIds.map(async (requesterId) => [
     requesterId,
@@ -370,9 +346,9 @@ export const getFilteredChangeRequests = async ({
   const requesters = new Map(requesterResults);
 
   const data = rows.map((cr) => {
-    const persisted = approvalCommentsMap[cr.id] || {};
     const deciderInfo = deciderInfoMap.get(cr.id) || {};
     const crPlain = typeof cr.get === 'function' ? cr.get({ plain: true }) : { ...cr };
+    const persisted = crPlain.customFieldValues && typeof crPlain.customFieldValues === 'object' ? crPlain.customFieldValues : {};
     if (crPlain.requesterId) {
       const requesterRes = requesters.get(String(crPlain.requesterId));
       if (requesterRes.status === 'SUCCESS' && requesterRes.identity) {
@@ -385,14 +361,14 @@ export const getFilteredChangeRequests = async ({
       ...crPlain,
       approvedComment: persisted.approvedComment || crPlain.approvedComment,
       approvedBy: persisted.approvedBy || deciderInfo.name || crPlain.approvedBy,
-      approvedByEmail: persisted.approvedByEmail || deciderInfo.email || crPlain.approvedByEmail || null,
+      approvedByEmail: deciderInfo.email || crPlain.approvedByEmail || null,
       decidedBy: persisted.approvedBy || persisted.rejectedBy || deciderInfo.name || crPlain.decidedBy,
       decidedByEmail: deciderInfo.email || crPlain.decidedByEmail || null,
       rejectedComment: persisted.rejectedComment || crPlain.rejectedComment,
       rejectionReason: persisted.rejectionReason || persisted.rejectedComment || crPlain.rejectionReason,
       implementedComment: persisted.implementedComment || crPlain.implementedComment,
-      implementedBy: persisted.implementedBy || crPlain.customFieldValues?.implementedBy || crPlain.implementedBy || null,
-      implementedByEmail: persisted.implementedByEmail || crPlain.customFieldValues?.implementedByEmail || crPlain.implementedByEmail || null
+      implementedBy: persisted.implementedBy || crPlain.implementedBy || null,
+      implementedByEmail: persisted.implementedByEmail || crPlain.implementedByEmail || null
     };
     const serialized = isWorklist ? serializeWorklistEntry(enrichedCr) : serializeChangeRequest(enrichedCr);
 
@@ -1070,15 +1046,6 @@ export const applyWorklistActionService = async ({ id, action, rejectionReason =
         if (typeof cr.changed === 'function') cr.changed('customFieldValues', true);
       }
       await cr.save({ transaction: tx });
-      await updateConfig('cr_approval_comments', (map) => ({
-        ...map,
-        [id]: {
-          ...(map[id] || {}),
-          implementedComment: actionComment,
-          implementedBy: actorName,
-          implementedByEmail: identity?.email || null
-        }
-      }), tx);
       await addAuditLog({ actorId, action: 'CR Implemented', ref: id, detail: `Marked Change Request ${id} as Implemented. Comment: ${actionComment || 'None'}` }, tx);
     });
 
@@ -1338,31 +1305,24 @@ export const applyWorklistActionService = async ({ id, action, rejectionReason =
           createdAt: new Date().toISOString()
         });
         changeRequest.comments = existingComments;
-        const currentCustom = changeRequest.customFieldValues && typeof changeRequest.customFieldValues === 'object'
-          ? { ...changeRequest.customFieldValues }
-          : {};
-        currentCustom.comments = existingComments;
-        if (finalStatus === 'Approved') {
-          currentCustom.approvedComment = actionComment;
-          currentCustom.approvedBy = actorName;
-        } else if (finalStatus === 'Rejected') {
-          currentCustom.rejectionReason = actionComment;
-          currentCustom.rejectedComment = actionComment;
-          currentCustom.rejectedBy = actorName;
-        }
-        changeRequest.customFieldValues = currentCustom;
-        if (typeof changeRequest.changed === 'function') changeRequest.changed('customFieldValues', true);
       }
+      const currentCustom = changeRequest.customFieldValues && typeof changeRequest.customFieldValues === 'object'
+        ? { ...changeRequest.customFieldValues }
+        : {};
+      if (actionComment) currentCustom.comments = existingComments;
+      if (finalStatus === 'Approved') {
+        currentCustom.approvedComment = actionComment;
+        currentCustom.approvedBy = actorName;
+        currentCustom.approvedDate = new Date().toISOString();
+      } else if (finalStatus === 'Rejected') {
+        currentCustom.rejectionReason = actionComment;
+        currentCustom.rejectedComment = actionComment;
+        currentCustom.rejectedBy = actorName;
+        currentCustom.rejectedDate = new Date().toISOString();
+      }
+      changeRequest.customFieldValues = currentCustom;
+      if (typeof changeRequest.changed === 'function') changeRequest.changed('customFieldValues', true);
       await changeRequest.save({ transaction: t });
-
-      await updateConfig('cr_approval_comments', (map) => ({
-        ...map,
-        [id]: {
-          ...(map[id] || {}),
-          ...(decision === 'Approved' ? { approvedComment: actionComment, approvedBy: actorName, approvedDate: new Date().toISOString() } : {}),
-          ...(decision === 'Rejected' ? { rejectedComment: actionComment, rejectionReason: actionComment, rejectedBy: actorName, rejectedDate: new Date().toISOString() } : {})
-        }
-      }), t);
     }
 
     await addAuditLog(

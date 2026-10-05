@@ -54,7 +54,6 @@ export const auditLogs = [];
 export const categoryBreakdown = [];
 export const statusBreakdown = [];
 export const monthlyVolume = [];
-export const appConfig = [];
 
 /**
  * Populate every table, parent-first. Safe to re-run: with `force` the
@@ -268,7 +267,7 @@ export const catalogSubcategoryFields = [
 export async function seedDatabase({ force = false } = {}) {
   const {
     Role, UserS8, Workflow, CatalogCategory, CatalogSubcategory, CatalogSubcategoryField,
-    ChangeRequest, ChangeRequestApproval, AuditLog, AppConfig, ChangeManagerCategory
+    ChangeRequest, ChangeRequestApproval, AuditLog, ChangeManagerCategory
   } = models;
 
   const fill = async (Model, rows) => {
@@ -318,6 +317,5 @@ export async function seedDatabase({ force = false } = {}) {
   results.push(await fill(ChangeManagerCategory, sampleCmCategories));
 
   results.push(await fill(AuditLog, auditLogs));
-  results.push(await fill(AppConfig, appConfig));
   return results;
 }

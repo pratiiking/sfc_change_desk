@@ -88,16 +88,6 @@ export const AuditLog = sequelize.define(
   }
 );
 
-// ---------- App Config -----------------------------------
-export const AppConfig = sequelize.define(
-  'AppConfig',
-  {
-    key: { type: DataTypes.STRING, primaryKey: true },
-    value: { type: DataTypes.JSONB, allowNull: false }
-  },
-  { tableName: 'app_config', timestamps: false }
-);
-
 // ---------- Associations ------------------------------
 import { ChangeRequestApproval } from './ChangeRequestApproval.js';
 import { CatalogCategory } from './CatalogCategory.js';
@@ -176,7 +166,6 @@ export const models = {
   ChangeRequest,
   ChangeRequestApproval,
   AuditLog,
-  AppConfig,
   ChangeManagerCategory,
   ChangeImplementerCategory,
   ChangeUser,
