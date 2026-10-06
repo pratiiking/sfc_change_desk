@@ -6,6 +6,49 @@ import { IdentityResolver } from './identityResolver.service.js';
 import { addAuditLog } from './auditLog.service.js';
 import { normalizeRole, ROLE } from '../config/constants.js';
 
+// hot_desk_roles.rank: lower number = higher authority. Cached briefly since
+// it's read on every settings write but essentially never changes.
+let roleRankCache = null;
+let roleRankCacheAt = 0;
+const ROLE_RANK_CACHE_TTL_MS = 30_000;
+
+const getRoleRankMap = async () => {
+  if (roleRankCache && Date.now() - roleRankCacheAt < ROLE_RANK_CACHE_TTL_MS) return roleRankCache;
+  const rows = await Role.findAll({ attributes: ['id', 'rank'], raw: true });
+  roleRankCache = new Map(rows.map((r) => [r.id, r.rank]));
+  roleRankCacheAt = Date.now();
+  return roleRankCache;
+};
+
+// Unranked roles (e.g. the code-only 'role-employee' sentinel) are treated as
+// the lowest possible rank so a real, ranked actor can always manage them.
+const rankOf = async (roleId) => {
+  const map = await getRoleRankMap();
+  return map.get(roleId) ?? Infinity;
+};
+
+// Throws if the actor isn't strictly senior to the target's *current* role —
+// this also naturally blocks acting on yourself, since your rank is never
+// strictly senior to your own.
+const assertCanManage = async (actorRoleId, targetRoleId, action) => {
+  const [actorRank, targetRank] = await Promise.all([rankOf(actorRoleId), rankOf(targetRoleId)]);
+  if (actorRank >= targetRank) {
+    const err = new Error(`You cannot ${action} a user at or above your own role level.`);
+    err.statusCode = 403;
+    throw err;
+  }
+};
+
+// Throws if the actor is trying to grant a role at or above their own rank.
+const assertCanGrant = async (actorRoleId, newRoleId) => {
+  const [actorRank, newRank] = await Promise.all([rankOf(actorRoleId), rankOf(newRoleId)]);
+  if (actorRank >= newRank) {
+    const err = new Error('You cannot assign a role at or above your own role level.');
+    err.statusCode = 403;
+    throw err;
+  }
+};
+
 const findUserS8ByKey = async (userKey) => {
   const rawId = String(userKey).replace(/^(S8-|EMP-|usr-)/, '');
   if (/^\d+$/.test(rawId)) {
@@ -338,10 +381,20 @@ export const updateSettingsUserService = async (userKey, payload = {}, meta = {}
     throw err;
   }
 
+  if (meta.actorId && String(meta.actorId) === String(user.id)) {
+    const err = new Error('You cannot change your own role.');
+    err.statusCode = 403;
+    throw err;
+  }
+  if (meta.actorRoleId) {
+    await assertCanManage(meta.actorRoleId, user.roleId, 'modify');
+  }
+
   const matchedRole = payload.roleId || payload.role
     ? normalizeRole(payload.roleId || payload.role)
     : null;
   if (matchedRole) {
+    if (meta.actorRoleId) await assertCanGrant(meta.actorRoleId, matchedRole.roleId);
     user.roleId = matchedRole.roleId;
   }
 
@@ -396,6 +449,8 @@ export const createSettingsUserService = async (payload = {}, meta = {}) => {
   }
 
   const primaryRole = normalizeRole(payload.roleId || payload.role) || { roleId: ROLE.REQUESTER, roleName: 'Requester' };
+  if (meta.actorRoleId) await assertCanGrant(meta.actorRoleId, primaryRole.roleId);
+
   const rawName = (payload.name || '').trim();
   const displayName = rawName || email.split('@')[0];
   const [firstName, ...rest] = displayName.split(' ');
@@ -406,6 +461,13 @@ export const createSettingsUserService = async (payload = {}, meta = {}) => {
   });
 
   if (user) {
+    if (meta.actorId && String(meta.actorId) === String(user.id)) {
+      const err = new Error('You cannot change your own role.');
+      err.statusCode = 403;
+      throw err;
+    }
+    if (meta.actorRoleId) await assertCanManage(meta.actorRoleId, user.roleId, 'modify');
+
     user.firstName = firstName || null;
     user.lastName = lastName;
     user.roleId = primaryRole.roleId;
@@ -470,6 +532,9 @@ export const deleteSettingsUserService = async (userKey, meta = {}) => {
     const err = new Error('You cannot delete or deactivate your own account.');
     err.statusCode = 400;
     throw err;
+  }
+  if (meta.actorRoleId) {
+    await assertCanManage(meta.actorRoleId, user.roleId, 'delete');
   }
 
   const name = [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email;

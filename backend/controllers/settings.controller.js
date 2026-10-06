@@ -21,6 +21,7 @@ export const getSettingsUsers = asyncHandler(async (req, res) => {
 export const createSettingsUser = asyncHandler(async (req, res) => {
   const user = await createSettingsUserService(req.body || {}, {
     actorId: req.user?.id,
+    actorRoleId: req.user?.roleId,
     invitedByName: req.user?.name
   });
   res.status(201).json({ success: true, message: 'User invited — a sign-in email has been sent', data: user });
@@ -29,7 +30,8 @@ export const createSettingsUser = asyncHandler(async (req, res) => {
 export const updateSettingsUser = asyncHandler(async (req, res) => {
   const { id } = req.params;
   const user = await updateSettingsUserService(id, req.body || {}, {
-    actorId: req.user?.id
+    actorId: req.user?.id,
+    actorRoleId: req.user?.roleId
   });
   res.json({ success: true, message: 'User updated successfully', data: user });
 });
@@ -38,7 +40,8 @@ export const deleteSettingsUser = asyncHandler(async (req, res) => {
   const { id } = req.params;
   const result = await deleteSettingsUserService(id, {
     actorId: req.user?.id,
-    actorEmail: req.user?.email
+    actorEmail: req.user?.email,
+    actorRoleId: req.user?.roleId
   });
   res.json({ success: true, message: 'User deactivated and roles removed successfully', data: result });
 });
