@@ -168,10 +168,12 @@ function SettingsPage({ user }) {
   // or above, so those options are hidden from the dropdown entirely.
   const roleRankById = new Map(roles.map(r => [r.id, r.rank]));
   const actorRank = roleRankById.get(user?.roleId) ?? -Infinity;
-  const ASSIGNABLE_ROLES = ALL_ASSIGNABLE_ROLES.filter((name) => {
-    const rank = roleRankById.get(ROLE_TO_ID[name]);
-    return rank !== undefined && rank > actorRank;
-  });
+  const ASSIGNABLE_ROLES = ALL_ASSIGNABLE_ROLES
+    .filter((name) => {
+      const rank = roleRankById.get(ROLE_TO_ID[name]);
+      return rank !== undefined && rank > actorRank;
+    })
+    .sort((a, b) => roleRankById.get(ROLE_TO_ID[a]) - roleRankById.get(ROLE_TO_ID[b]));
 
   const handleOpenManageUser = async (targetUser) => {
     if (isRequester) return;
