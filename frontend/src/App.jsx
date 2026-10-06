@@ -20,13 +20,9 @@ function DashboardRoute({ isOrg = false }) {
   const { user, searchQuery, onNavigate } = useOutletContext();
   const location = useLocation();
 
-  const roleName = (user?.role || '').toLowerCase();
-  const roleId = user?.roleId || '';
-  const rawRoleIds = Array.isArray(user?.rolesList) ? user.rolesList : [];
-  const isSuperAdmin = Boolean(user?.isSuperAdmin || roleId === ROLE.SUPER_ADMIN || rawRoleIds.includes(ROLE.SUPER_ADMIN) || roleName.includes('super'));
-  const isBoardUser = Boolean(user?.isBoardMember || roleId === 'role-board' || roleId === ROLE.BOARD || rawRoleIds.includes(ROLE.BOARD) || rawRoleIds.includes('role-board') || roleName.includes('board'));
+  const canViewOrgDashboard = Array.isArray(user?.permissions) && user.permissions.includes('dashboard.org.view');
 
-  if (isOrg && !isSuperAdmin && !isBoardUser) {
+  if (isOrg && !canViewOrgDashboard) {
     return <Navigate to="/dashboard" replace />;
   }
 

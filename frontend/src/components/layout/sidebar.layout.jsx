@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 import { useTheme } from '../../context/ThemeContext';
 import { useWorklistActionableDots } from '../../queries/worklist.queries';
-import { getAllowedWorklistModules, ROLE } from '../../lib/permissions.lib';
+import { getAllowedWorklistModules } from '../../lib/permissions.lib';
 
 function Sidebar({
   activeItem,
@@ -37,11 +37,7 @@ function Sidebar({
   const { theme } = useTheme();
   const faviconSrc = theme === 'dark' ? '/images/white-favicon.png' : '/images/black-favicon.png';
 
-  const roleName = (user?.role || '').toLowerCase();
-  const roleId = user?.roleId || '';
-  const rawRoleIds = Array.isArray(user?.rolesList) ? user.rolesList : [];
-  const isSuperAdmin = Boolean(user?.isSuperAdmin || roleId === ROLE.SUPER_ADMIN || rawRoleIds.includes(ROLE.SUPER_ADMIN) || roleName.includes('super'));
-  const isBoardUser = Boolean(user?.isBoardMember || roleId === 'role-board' || roleId === ROLE.BOARD || rawRoleIds.includes(ROLE.BOARD) || rawRoleIds.includes('role-board') || roleName.includes('board'));
+  const canViewOrgDashboard = Array.isArray(user?.permissions) && user.permissions.includes('dashboard.org.view');
 
   const allowedWorklistModuleIds = getAllowedWorklistModules(user);
   const isApprover = allowedWorklistModuleIds.length > 0;
@@ -214,7 +210,7 @@ function Sidebar({
 
         const visibleMgmtItems = [];
 
-        if (isSuperAdmin || isBoardUser) {
+        if (canViewOrgDashboard) {
           visibleMgmtItems.push({ id: 'Organization Dashboard', path: '/org-dashboard', label: 'Organization Dashboard', icon: LayoutGrid });
         }
 
