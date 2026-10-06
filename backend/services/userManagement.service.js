@@ -27,7 +27,7 @@ export const getChangeManagerCategoriesService = async (userId) => {
     const assignments = await ChangeManagerCategory.findAll({ raw: true });
     return assignments.map((a) => ({ userId: a.userId, categoryId: a.categoryId }));
   }
-  const normalizedKeys = [userId];
+  const normalizedKeys = [String(userId)];
   if (typeof userId === 'string' && userId.startsWith('EMP-')) {
     normalizedKeys.push(userId.replace('EMP-', ''));
   } else if (typeof userId === 'string' && userId.startsWith('S8-')) {
@@ -44,7 +44,7 @@ export const getChangeManagerCategoriesService = async (userId) => {
 };
 
 export const updateChangeManagerCategoriesService = async (userId, categoryIds = []) => {
-  const normalizedKeys = [userId];
+  const normalizedKeys = [String(userId)];
   if (typeof userId === 'string' && userId.startsWith('EMP-')) {
     normalizedKeys.push(userId.replace('EMP-', ''));
   } else if (typeof userId === 'string' && userId.startsWith('S8-')) {
@@ -70,7 +70,7 @@ export const updateChangeManagerCategoriesService = async (userId, categoryIds =
 
   for (const cid of toAdd) {
     const id = `cmc-${userId}-${cid}`;
-    await ChangeManagerCategory.upsert({ id, userId, categoryId: cid }).catch(() => {});
+    await ChangeManagerCategory.upsert({ id, userId: String(userId), categoryId: cid }).catch(() => {});
   }
 
   return getChangeManagerCategoriesService(userId);
@@ -83,7 +83,7 @@ export const getChangeImplementerCategoriesService = async (userId) => {
     const assignments = await ChangeImplementerCategory.findAll({ raw: true });
     return assignments.map((a) => ({ userId: a.userId, categoryId: a.categoryId }));
   }
-  const normalizedKeys = [userId];
+  const normalizedKeys = [String(userId)];
   if (typeof userId === 'string' && userId.startsWith('EMP-')) {
     normalizedKeys.push(userId.replace('EMP-', ''));
   } else if (typeof userId === 'string' && userId.startsWith('S8-')) {
@@ -100,7 +100,7 @@ export const getChangeImplementerCategoriesService = async (userId) => {
 };
 
 export const updateChangeImplementerCategoriesService = async (userId, categoryIds = []) => {
-  const normalizedKeys = [userId];
+  const normalizedKeys = [String(userId)];
   if (typeof userId === 'string' && userId.startsWith('EMP-')) {
     normalizedKeys.push(userId.replace('EMP-', ''));
   } else if (typeof userId === 'string' && userId.startsWith('S8-')) {
@@ -126,7 +126,7 @@ export const updateChangeImplementerCategoriesService = async (userId, categoryI
 
   for (const cid of toAdd) {
     const id = `cic-${userId}-${cid}`;
-    await ChangeImplementerCategory.upsert({ id, userId, categoryId: cid }).catch(() => {});
+    await ChangeImplementerCategory.upsert({ id, userId: String(userId), categoryId: cid }).catch(() => {});
   }
 
   IdentityResolver.clearCache();
