@@ -41,6 +41,20 @@ const CR_INCLUDE = [
   { model: Employee, as: 'managerRecord' }
 ];
 
+// The single place that answers "which employees.emp_id is this email?" --
+// used everywhere we need to know who the currently acting person is in
+// employee-directory terms (ownership, ticket authorship), since there is no
+// stored requesterId/login-identity column on change_requests anymore.
+const resolveEmployeeIdByEmail = async (email) => {
+  const trimmed = (email || '').trim().toLowerCase();
+  if (!trimmed) return null;
+  const emp = await Employee.findOne({
+    where: sequelize.where(sequelize.fn('LOWER', sequelize.col('email')), trimmed),
+    attributes: ['empId']
+  });
+  return emp?.empId || null;
+};
+
 export const getChangeRequestsService = async () => {
   const rows = await ChangeRequest.findAll({
     include: CR_INCLUDE,
@@ -70,17 +84,10 @@ export const getFilteredChangeRequests = async ({
   const andClauses = [];
 
   if (userId && !isWorklist && !organizationScope) {
-    const userEmail = (currentUser?.email || '').trim().toLowerCase();
-    if (userEmail) {
-      andClauses.push({
-        [Op.or]: [
-          { requesterId: userId },
-          sequelize.where(sequelize.fn('LOWER', sequelize.col('employee_email')), userEmail)
-        ]
-      });
-    } else {
-      andClauses.push({ requesterId: userId });
-    }
+    const myEmployeeId = await resolveEmployeeIdByEmail(currentUser?.email);
+    // No resolvable employee record for this login -> they own nothing, show
+    // nothing (never fall through to showing everyone's requests).
+    andClauses.push({ employeeId: myEmployeeId || '__no_match__' });
   }
 
   if (isWorklist) {
@@ -95,16 +102,6 @@ export const getFilteredChangeRequests = async ({
 
       // Rule: No user sees their own requests in My Worklist
       if (!organizationScope) {
-        const ownIds = new Set([actingUserId]);
-        if (identity) {
-          if (identity.userKey) ownIds.add(identity.userKey);
-          if (identity.employeeBusinessId) ownIds.add(identity.employeeBusinessId);
-          if (identity.sourceId) ownIds.add(String(identity.sourceId));
-          if (identity.id) ownIds.add(String(identity.id));
-        }
-        const excludeIdsList = Array.from(ownIds).filter(Boolean);
-        andClauses.push({ requesterId: { [Op.notIn]: excludeIdsList } });
-
         if (identity?.employeeBusinessId) {
           andClauses.push({ employeeId: { [Op.ne]: identity.employeeBusinessId } });
         }
@@ -341,25 +338,10 @@ export const getFilteredChangeRequests = async ({
     }
   }
 
-  const requesterIds = [...new Set(rows.map((cr) => cr.requesterId).filter(Boolean).map(String))];
-  const requesterResults = await Promise.all(requesterIds.map(async (requesterId) => [
-    requesterId,
-    await IdentityResolver.resolveByKey(requesterId)
-  ]));
-  const requesters = new Map(requesterResults);
-
   const data = rows.map((cr) => {
     const deciderInfo = deciderInfoMap.get(cr.id) || {};
     const crPlain = typeof cr.get === 'function' ? cr.get({ plain: true }) : { ...cr };
     const persisted = crPlain.customFieldValues && typeof crPlain.customFieldValues === 'object' ? crPlain.customFieldValues : {};
-    if (crPlain.requesterId) {
-      const requesterRes = requesters.get(String(crPlain.requesterId));
-      if (requesterRes.status === 'SUCCESS' && requesterRes.identity) {
-        crPlain.employeeName = crPlain.employeeName || requesterRes.identity.displayName || requesterRes.identity.name;
-        crPlain.employeeEmail = crPlain.employeeEmail || requesterRes.identity.email;
-        crPlain.employeeId = crPlain.employeeId || requesterRes.identity.employeeBusinessId;
-      }
-    }
     const enrichedCr = {
       ...crPlain,
       approvedComment: persisted.approvedComment || crPlain.approvedComment,
@@ -383,8 +365,7 @@ export const getFilteredChangeRequests = async ({
       const isCiCategoryAssigned = isSuperOrAdmin || (resolvedCategoryId ? ciCatIds.has(resolvedCategoryId) : false);
 
       const isSelfRequest = actingUserId ? (
-        (cr.requesterId && (cr.requesterId === actingUserId || (typeof actingUserKeys !== 'undefined' && actingUserKeys.has(cr.requesterId)))) ||
-        (cr.employeeId && (typeof actingUserKeys !== 'undefined' && actingUserKeys.has(cr.employeeId)))
+        cr.employeeId && (typeof actingUserKeys !== 'undefined' && actingUserKeys.has(cr.employeeId))
       ) : false;
 
       const isStage1 = isManagerReviewStage(cr.approvalStage);
@@ -446,7 +427,7 @@ export const getFilteredChangeRequests = async ({
   if (isWorklist && actingUserId) {
     const allWorklistRows = await ChangeRequest.findAll({
       where: baseWhere,
-      attributes: ['id', 'status', 'approvalStage', 'category', 'requesterId', 'employeeId', 'managerId'],
+      attributes: ['id', 'status', 'approvalStage', 'category', 'employeeId', 'managerId'],
       raw: true
     });
 
@@ -470,8 +451,7 @@ export const getFilteredChangeRequests = async ({
       const isCiCategoryAssigned = isSuperOrAdmin || (resolvedCategoryId ? ciCatIds.has(resolvedCategoryId) : false);
 
       const isSelfRequest = actingUserId ? (
-        (cr.requesterId && (cr.requesterId === actingUserId || (typeof actingUserKeys !== 'undefined' && actingUserKeys.has(cr.requesterId)))) ||
-        (cr.employeeId && (typeof actingUserKeys !== 'undefined' && actingUserKeys.has(cr.employeeId)))
+        cr.employeeId && (typeof actingUserKeys !== 'undefined' && actingUserKeys.has(cr.employeeId))
       ) : false;
 
       const isStage1 = isManagerReviewStage(cr.approvalStage);
@@ -564,14 +544,14 @@ const createApprovalSnapshot = async (changeRequest, tx) => {
   }
 };
 
-const identityOwnsRequest = async (actorId, requesterId) => {
-  if (!actorId || !requesterId) return false;
+// Ownership is anchored to the employee directory, not the login session:
+// does the acting user's own employeeId (resolved via IdentityResolver, which
+// itself resolves off the employees table) match this request's employeeId?
+const identityOwnsRequest = async (actorId, employeeId) => {
+  if (!actorId || !employeeId) return false;
   const identityRes = await IdentityResolver.resolveByKey(String(actorId));
-  if (identityRes.status !== 'SUCCESS') return actorId === requesterId;
-  const identity = identityRes.identity;
-  const keys = new Set([actorId, identity.userKey, identity.id, identity.sourceId, identity.employeeBusinessId]);
-  (identity.aliases || []).forEach((alias) => keys.add(alias));
-  return keys.has(requesterId) || String(requesterId) === String(identity.employeeBusinessId);
+  if (identityRes.status !== 'SUCCESS') return false;
+  return String(identityRes.identity.employeeBusinessId) === String(employeeId);
 };
 
 export const updateDraftChangeRequestService = async (id, actorId, payload = {}) => {
@@ -582,7 +562,7 @@ export const updateDraftChangeRequestService = async (id, actorId, payload = {})
     throw err;
   }
 
-  if (actorId && cr.requesterId && !(await identityOwnsRequest(actorId, cr.requesterId))) {
+  if (actorId && cr.employeeId && !(await identityOwnsRequest(actorId, cr.employeeId))) {
     const err = new Error('Unauthorized: You can only edit your own draft requests');
     err.statusCode = 403;
     throw err;
@@ -619,7 +599,7 @@ export const updateDraftChangeRequestService = async (id, actorId, payload = {})
   if (payload.startDate) cr.startDate = payload.startDate;
   if (payload.endDate) cr.endDate = payload.endDate;
   if (payload.risk) cr.risk = payload.risk;
-  const empKey = actorId || payload.userKey || cr.requesterId;
+  const empKey = actorId || payload.userKey;
   let empRecord = null;
   if (typeof empKey === 'string' && empKey.startsWith('EMP-')) {
     const empNumericId = parseInt(empKey.replace('EMP-', ''), 10);
@@ -689,7 +669,7 @@ export const submitDraftChangeRequestService = async (id, actorId = null) => {
       throw err;
     }
 
-    if (actorId && !(await identityOwnsRequest(actorId, cr.requesterId))) {
+    if (actorId && !(await identityOwnsRequest(actorId, cr.employeeId))) {
       const err = new Error('Unauthorized: You can only submit your own draft requests');
       err.statusCode = 403;
       throw err;
@@ -884,6 +864,12 @@ export const createChangeRequestService = async (payload = {}) => {
     validManagerId = mgrEmp.empId;
   }
 
+  if (!empIdToStore) {
+    const err = new Error('Unable to resolve your employee record. A Change Request cannot be created without a valid employee identity.');
+    err.statusCode = 400;
+    throw err;
+  }
+
   const createdCR = await ChangeRequest.create({
     id,
     title: payload.title || 'Untitled change request',
@@ -900,7 +886,6 @@ export const createChangeRequestService = async (payload = {}) => {
     ...initialApprovalState(),
     submittedAt: new Date(),
     closedAt: null,
-    requesterId,
     approverId: null,
     customFieldValues: mergedCustomFields
   });
@@ -969,21 +954,8 @@ export const applyWorklistActionService = async ({ id, action, rejectionReason =
     throw err;
   }
 
-  const actorIds = new Set([actorId].filter(Boolean));
-  if (identity) {
-    if (Array.isArray(identity.aliases)) {
-      identity.aliases.forEach((alias) => actorIds.add(alias));
-    }
-    if (identity.userKey) actorIds.add(identity.userKey);
-    if (identity.employeeBusinessId) actorIds.add(identity.employeeBusinessId);
-    if (identity.sourceId) actorIds.add(String(identity.sourceId));
-    if (identity.id) actorIds.add(String(identity.id));
-  }
-
-  const isSelf = actorIds.has(targetCR.requesterId) ||
-    (identity?.employeeBusinessId && targetCR.employeeId && targetCR.employeeId === identity.employeeBusinessId) ||
-    (identity?.email && targetCR.employeeEmail && targetCR.employeeEmail.toLowerCase() === identity.email.toLowerCase()) ||
-    (identity?.email && targetCR.requesterEmail && targetCR.requesterEmail.toLowerCase() === identity.email.toLowerCase());
+  const isSelf = (identity?.employeeBusinessId && targetCR.employeeId && targetCR.employeeId === identity.employeeBusinessId) ||
+    (identity?.email && targetCR.employeeEmail && targetCR.employeeEmail.toLowerCase() === identity.email.toLowerCase());
 
   if (isSelf) {
     const err = new Error(`Self-approval prohibited: You cannot ${action} your own Change Request (${id}).`);

@@ -23,7 +23,11 @@ export const ChangeRequest = sequelize.define(
     title: { type: DataTypes.STRING, allowNull: false },
     category: { type: DataTypes.STRING, allowNull: false },
     subCategory: { type: DataTypes.STRING, defaultValue: '' },
-    employeeId: { type: DataTypes.STRING, defaultValue: '' },
+    // employeeId is the authorization anchor for ownership (My Requests, draft
+    // edit/submit, self-approval block) as well as the FK to employees for
+    // display -- there is deliberately no separate requesterId/login-identity
+    // column; every requester is necessarily a real employee.
+    employeeId: { type: DataTypes.STRING, allowNull: false },
     managerId: { type: DataTypes.STRING, allowNull: true, field: 'manager_id' },
     location: { type: DataTypes.STRING, allowNull: true, defaultValue: null },
     justification: { type: DataTypes.TEXT, defaultValue: '' },
@@ -47,7 +51,6 @@ export const ChangeRequest = sequelize.define(
     },
     submittedAt: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
     closedAt: { type: DataTypes.DATE, allowNull: true },
-    requesterId: { type: DataTypes.STRING, allowNull: false },
     approverId: { type: DataTypes.STRING, allowNull: true },
     subcategoryId: { type: DataTypes.STRING, allowNull: true },
     // employeeName/employeeEmail/managerName/managerEmail are intentionally NOT
@@ -78,11 +81,11 @@ export const ChangeRequest = sequelize.define(
     timestamps: true,
     underscored: true,
     indexes: [
-      { fields: ['requester_id'] },
+      { fields: ['employee_id'] },
       { fields: ['status'] },
       { fields: ['category'] },
       { fields: ['submitted_at'] },
-      { fields: ['requester_id', 'submitted_at'] }
+      { fields: ['employee_id', 'submitted_at'] }
     ]
   }
 );

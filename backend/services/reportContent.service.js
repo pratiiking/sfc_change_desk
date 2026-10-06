@@ -4,7 +4,8 @@ import {
   ChangeRequestApproval,
   AuditLog,
   CatalogCategory,
-  CatalogSubcategory
+  CatalogSubcategory,
+  Employee
 } from '../models/index.js';
 import { IdentityResolver } from './identityResolver.service.js';
 
@@ -199,32 +200,19 @@ export const getEmergencyChangeLog = async (fromDate, toDate) => {
 
   const tickets = await ChangeRequest.findAll({
     where,
+    include: [{ model: Employee, as: 'employeeRecord' }],
     order: [['submittedAt', 'DESC']]
   });
 
-  const requesterKeys = [...new Set(tickets.map(t => t.requesterId).filter(Boolean))];
-  const identityMap = new Map();
-  await Promise.all(
-    requesterKeys.map(async (k) => {
-      const res = await IdentityResolver.resolveByKey(k);
-      if (res.status === 'SUCCESS' && res.identity) {
-        identityMap.set(k, res.identity);
-      }
-    })
-  );
-
-  const log = tickets.map(t => {
-    const requester = identityMap.get(t.requesterId);
-    return {
-      id: t.id,
-      title: t.title,
-      requesterName: requester?.displayName || requester?.name || null,
-      requesterEmail: requester?.email || null,
-      status: t.status,
-      submittedAt: t.submittedAt,
-      closedAt: t.closedAt
-    };
-  });
+  const log = tickets.map(t => ({
+    id: t.id,
+    title: t.title,
+    requesterName: t.employeeRecord?.name || null,
+    requesterEmail: t.employeeRecord?.email || null,
+    status: t.status,
+    submittedAt: t.submittedAt,
+    closedAt: t.closedAt
+  }));
 
   return {
     totalEmergencyCount: log.length,

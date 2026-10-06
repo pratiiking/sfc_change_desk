@@ -1,12 +1,18 @@
 import { Op, fn, col } from 'sequelize';
 import { ChangeRequest } from '../models/index.js';
 import { buildDateFilterClause } from '../utils/dateFilterUtils.js';
+import { IdentityResolver } from './identityResolver.service.js';
 
 export { buildDateFilterClause };
 
+// Personal dashboard scope is anchored to the employee directory (employeeId),
+// same as "My Requests" -- resolve the acting login identity's employeeBusinessId
+// rather than filtering by a login-identity key directly.
 const getDashboardScopeWhere = async (userId) => {
   if (!userId) return {};
-  return { requesterId: userId };
+  const identityRes = await IdentityResolver.resolveByKey(userId);
+  const employeeId = identityRes.status === 'SUCCESS' ? identityRes.identity?.employeeBusinessId : null;
+  return { employeeId: employeeId || '__no_match__' };
 };
 
 export const getMetricsService = async (userId = null, { dateFilter = null, startDate = null, endDate = null, status = null, searchQuery = null } = {}) => {

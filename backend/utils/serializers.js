@@ -10,7 +10,7 @@ export const serializeChangeRequest = (row) => {
   const cr = plain(row);
   const {
     requester, approver, workflow, approvals,
-    requesterId, approverId, workflowId,
+    approverId, workflowId,
     submittedAt, closedAt, createdAt, updatedAt,
     ...rest
   } = cr;
@@ -75,7 +75,6 @@ export const serializeChangeRequest = (row) => {
 
   return {
     ...rest,
-    requesterId: requesterId || cr.requester_id || cr.requesterId || null,
     approverId: approverId || cr.approver_id || cr.approverId || null,
     workflowId: workflowId || cr.workflow_id || cr.workflowId || null,
     approvals: approvals || [],
