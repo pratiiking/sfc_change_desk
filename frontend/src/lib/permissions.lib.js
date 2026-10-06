@@ -21,115 +21,36 @@ export const ROLE = Object.freeze({
  * Returns an array of permitted worklist module IDs for the given user.
  * Permitted modules: 'change_request' | 'prespend' | 'travel'
  *
- * Rules:
- * - Super Admin (ROLE.SUPER_ADMIN / isSuperAdmin): all three ['change_request', 'prespend', 'travel']
- * - Board User (role-board / isBoardMember / ROLE.BOARD): all three ['change_request', 'prespend', 'travel']
- * - Change Request: ROLE.SUPER_ADMIN, ROLE.ADMIN_LEGACY, ROLE.CHANGE_ADMIN, ROLE.CHANGE_MANAGER, ROLE.CHANGE_IMPLEMENTER, or cmCategories / ciCategories assigned
- * - Pre-Spend Request: ROLE.SUPER_ADMIN, ROLE.PRESPEND_ADMIN, isPreSpendAdmin, ROLE.BOARD, role-board
- * - Travel Desk: ROLE.SUPER_ADMIN, ROLE.TRAVEL_ADMIN, isTravelAdmin, ROLE.BOARD, role-board
- * - Independent Set resolution: Multiple roles accumulate without cancelling each other.
- * - No fallback: Returns empty array if user has no approver/admin roles.
+ * Driven directly by the user's real, DB-backed authority
+ * (hot_desk_roles.authority, resolved onto user.permissions) instead of
+ * hardcoded role-name/role-id matching, so this always matches what the
+ * backend actually grants (see worklist/preSpend/travelDesk routes'
+ * requirePermission/requireWorklistViewPermission checks) and stays correct
+ * if a role's authority is ever edited from Settings > Roles.
+ *
+ * Category-scoped Change Manager/Implementer assignments (cmCategories /
+ * ciCategories) grant 'change_request' access even without the named role,
+ * since that access is additive and independent of the primary role.
  */
 export function getAllowedWorklistModules(user) {
   if (!user) return [];
 
-  const roleName = String(user?.role || '').toLowerCase();
-  const roleId = String(user?.roleId || '');
-  const rawRolesList = Array.isArray(user?.roles) ? user.roles : [];
-  const rawRoleIds = Array.isArray(user?.rolesList) ? user.rolesList : [];
-
-  const allRoleStrings = [
-    roleName,
-    roleId,
-    ...rawRolesList.map(r => (typeof r === 'string' ? r : r.roleName || r.name || r.roleId || '')).map(s => String(s).toLowerCase()),
-    ...rawRoleIds.map(r => String(r).toLowerCase())
-  ];
-
-  const hasRole = (...targets) => {
-    return targets.some(target => {
-      const t = target.toLowerCase();
-      return allRoleStrings.some(r => r === t || r.includes(t));
-    });
-  };
-
-  const isSuperAdmin = Boolean(
-    user?.isSuperAdmin ||
-    roleId === ROLE.SUPER_ADMIN ||
-    rawRoleIds.includes(ROLE.SUPER_ADMIN) ||
-    hasRole(ROLE.SUPER_ADMIN, 'super admin', 'superadmin', 'changedesk super admin')
-  );
-
-  const isBoardUser = Boolean(
-    user?.isBoardMember ||
-    roleId === 'role-board' ||
-    roleId === ROLE.BOARD ||
-    rawRoleIds.includes(ROLE.BOARD) ||
-    rawRoleIds.includes('role-board') ||
-    hasRole('board', 'role-board', ROLE.BOARD)
-  );
-
-  if (isSuperAdmin) {
-    return ['change_request', 'prespend', 'travel'];
-  }
-
+  const permissions = Array.isArray(user?.permissions) ? user.permissions : [];
   const modulesSet = new Set();
 
-  if (isBoardUser) {
-    modulesSet.add('prespend');
-    modulesSet.add('travel');
-  }
-
-  // 1. Change Request Module Checks
-  const isChangeAdmin = Boolean(
-    user?.isChangeAdmin ||
-    roleId === ROLE.ADMIN_LEGACY ||
-    roleId === ROLE.CHANGE_ADMIN ||
-    rawRoleIds.includes(ROLE.ADMIN_LEGACY) ||
-    rawRoleIds.includes(ROLE.CHANGE_ADMIN) ||
-    hasRole(ROLE.CHANGE_ADMIN, 'change desk admin', 'change admin')
-  );
-
-  const isChangeManager = Boolean(
-    user?.isChangeManager ||
-    roleId === ROLE.CHANGE_MANAGER ||
-    rawRoleIds.includes(ROLE.CHANGE_MANAGER) ||
-    hasRole(ROLE.CHANGE_MANAGER, 'manager', 'change manager') ||
-    (Array.isArray(user?.cmCategories) && user.cmCategories.length > 0)
-  );
-
-  const isChangeImplementer = Boolean(
-    user?.isChangeImplementer ||
-    roleId === ROLE.CHANGE_IMPLEMENTER ||
-    rawRoleIds.includes(ROLE.CHANGE_IMPLEMENTER) ||
-    hasRole(ROLE.CHANGE_IMPLEMENTER, 'implementer', 'change implementer') ||
+  if (
+    permissions.includes('changeRequest.worklist.view') ||
+    (Array.isArray(user?.cmCategories) && user.cmCategories.length > 0) ||
     (Array.isArray(user?.ciCategories) && user.ciCategories.length > 0)
-  );
-
-  if (isChangeAdmin || isChangeManager || isChangeImplementer) {
+  ) {
     modulesSet.add('change_request');
   }
 
-  // 2. Pre-Spend Module Checks
-  const isPreSpendAdmin = Boolean(
-    user?.isPreSpendAdmin ||
-    roleId === ROLE.PRESPEND_ADMIN ||
-    rawRoleIds.includes(ROLE.PRESPEND_ADMIN) ||
-    hasRole(ROLE.PRESPEND_ADMIN, 'prespend admin', 'pre-spend admin', 'spend admin')
-  );
-
-  if (isPreSpendAdmin) {
+  if (permissions.includes('preSpend.worklist.view')) {
     modulesSet.add('prespend');
   }
 
-  // 3. Travel Desk Module Checks
-  const isTravelAdmin = Boolean(
-    user?.isTravelAdmin ||
-    roleId === ROLE.TRAVEL_ADMIN ||
-    rawRoleIds.includes(ROLE.TRAVEL_ADMIN) ||
-    hasRole(ROLE.TRAVEL_ADMIN, 'travel admin', 'travel desk admin')
-  );
-
-  if (isTravelAdmin) {
+  if (permissions.includes('travel.worklist.view')) {
     modulesSet.add('travel');
   }
 

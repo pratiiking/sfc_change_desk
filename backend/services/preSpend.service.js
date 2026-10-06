@@ -347,12 +347,14 @@ export const getPreSpendRequestsService = async ({ user, userId, isWorklist = fa
     const isSuperAdmin = user?.isSuperAdmin || user?.roleId === ROLE.SUPER_ADMIN || (user?.role || '').toLowerCase().includes('super');
     const isBoardUser = user?.isBoardUser || user?.roleId === 'role-board' || (user?.role || '').toLowerCase().includes('board');
     const isPreSpendAdmin = user?.isPreSpendAdmin || user?.roleId === ROLE.PRESPEND_ADMIN || ((user?.role || '').toLowerCase().includes('admin') && (user?.role || '').toLowerCase().includes('spend'));
+    // Admin (rank 3) sits above the module-specific admins (rank 4) and inherits their authority.
+    const isAdmin = user?.roleId === ROLE.ADMIN_LEGACY || (user?.role || '').toLowerCase().trim() === 'admin';
 
     const exclusions = [];
     if (currentUserId) exclusions.push({ requesterId: { [Op.ne]: currentUserId } });
     if (currentUserEmail) exclusions.push({ requesterEmail: { [Op.notILike]: currentUserEmail } });
 
-    if (isSuperAdmin || isBoardUser || isPreSpendAdmin) {
+    if (isSuperAdmin || isBoardUser || isPreSpendAdmin || isAdmin) {
       const actionableWhere = { status: { [Op.iLike]: '%Pending%' } };
       if (exclusions.length > 0) actionableWhere[Op.and] = exclusions;
       actionableCount = await PreSpendRequest.count({ where: actionableWhere });
@@ -456,6 +458,12 @@ const handlePreSpendActionWithinTransaction = async ({ id, action, actionComment
     (actorRole.includes('admin') && (actorRole.includes('spend') || actorRole.includes('prespend'))) ||
     actorRolesList.some(r => r === ROLE.PRESPEND_ADMIN || (r.includes('admin') && (r.includes('spend') || r.includes('prespend'))));
 
+  // Admin (rank 3) sits above the module-specific admins (rank 4) and inherits their authority.
+  const isAdmin =
+    actorRoleId === ROLE.ADMIN_LEGACY ||
+    actorRole === 'admin' ||
+    actorRolesList.some(r => r === ROLE.ADMIN_LEGACY || r === 'admin');
+
   // Integrity Rule: Users cannot approve/reject their own requests across all aliases
   const actorId = actor?.userKey || actor?.id || actor?.email || '';
   const actorEmail = (actor?.email || '').toLowerCase().trim();
@@ -484,7 +492,7 @@ const handlePreSpendActionWithinTransaction = async ({ id, action, actionComment
     const managerEmailLower = (req.managerEmail || '').toLowerCase().trim();
     const isAssignedManager = Boolean(managerEmailLower && actorEmail && managerEmailLower === actorEmail);
 
-    if (!isAssignedManager && !isSuperAdmin) {
+    if (!isAssignedManager && !isSuperAdmin && !isAdmin) {
       const err = new Error('Unauthorized: This pre-spend requisition is awaiting approval from the assigned reporting manager.');
       err.statusCode = 403;
       throw err;
@@ -570,27 +578,28 @@ const handlePreSpendActionWithinTransaction = async ({ id, action, actionComment
     }
   }
 
-  // Stage 2: Board Member approval (Pre-spend Admin is view-only at this stage)
-  if (!isBoardUser && !isSuperAdmin) {
+  // Stage 2: Board Member, Super Admin, or Admin approval (Pre-spend Admin is view-only at this stage)
+  if (!isBoardUser && !isSuperAdmin && !isAdmin) {
     if (isPreSpendAdmin) {
       const err = new Error('View-only access: Pre-Spend Admin cannot decide Stage 2. Pre-Spend requires Board Member approval.');
       err.statusCode = 403;
       throw err;
     }
-    const err = new Error('Unauthorized: Only Board Members or Super Admins can authorize Stage 2 Pre-Spend requisitions.');
+    const err = new Error('Unauthorized: Only Board Members, Admins, or Super Admins can authorize Stage 2 Pre-Spend requisitions.');
     err.statusCode = 403;
     throw err;
   }
 
+  const deciderRoleLabel = isBoardUser ? 'Board Member' : isAdmin ? 'Admin' : 'Super Admin';
   const newStatus = action === 'approve' ? 'Approved' : 'Rejected';
   const history = Array.isArray(req.approvalHistory) ? [...req.approvalHistory] : [];
   history.push({
     action,
     decision: newStatus,
     comment: actionComment,
-    actorName: actor?.displayName || actor?.name || actor?.email || 'Board Member',
+    actorName: actor?.displayName || actor?.name || actor?.email || deciderRoleLabel,
     actorEmail: actor?.email || '',
-    actorRole: isBoardUser ? 'Board Member' : 'Super Admin',
+    actorRole: deciderRoleLabel,
     timestamp: new Date().toISOString()
   });
 
@@ -603,7 +612,7 @@ const handlePreSpendActionWithinTransaction = async ({ id, action, actionComment
     actorId: actorId || actor?.userKey || actor?.id,
     action: action === 'approve' ? 'Approved Pre-Spend (Board)' : 'Rejected Pre-Spend (Board)',
     ref: req.requestCode,
-    detail: `${isBoardUser ? 'Board Member' : 'Super Admin'} ${action === 'approve' ? 'approved' : 'rejected'} Pre-Spend requisition ${req.requestCode}: "${actionComment || 'No comment'}"`
+    detail: `${deciderRoleLabel} ${action === 'approve' ? 'approved' : 'rejected'} Pre-Spend requisition ${req.requestCode}: "${actionComment || 'No comment'}"`
   }, transaction);
 
   // Notify Requester, Pre-Spend Admin, and Finance (FINANCE_NOTIFICATION_EMAIL if set)
@@ -620,8 +629,8 @@ const handlePreSpendActionWithinTransaction = async ({ id, action, actionComment
       preSpend: req.toJSON ? req.toJSON() : req,
       action,
       comment: actionComment,
-      deciderName: actor?.displayName || actor?.name || actor?.email || 'Board Member',
-      deciderRole: isBoardUser ? 'Board Member' : 'Super Admin',
+      deciderName: actor?.displayName || actor?.name || actor?.email || deciderRoleLabel,
+      deciderRole: deciderRoleLabel,
       cc: ccRecipients
     }).catch((err) => console.error('[mail] pre-spend decision email failed:', err.message));
   }).catch((err) => console.error('[mail] Stage 2 decision notify error:', err.message));
