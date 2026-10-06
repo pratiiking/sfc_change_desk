@@ -197,15 +197,15 @@ export class IdentityResolver {
 
     const keysToCheck = [String(s8User.id), `S8-${s8User.id}`, `EMP-${s8User.id}`, `usr-${s8User.id}`, email];
 
-    // Fetch CM category assignments
+    // category_role_assignments.user_id is a real FK to hot_desk_users.id now —
+    // no alias forms to check, just the plain integer.
     const cmAssignments = await ChangeManagerCategory.findAll({
-      where: { userId: { [Op.in]: keysToCheck } }
+      where: { userId: s8User.id }
     });
     const cmCategories = cmAssignments.map(a => a.categoryId);
 
-    // Fetch CI category assignments
     const ciAssignments = await ChangeImplementerCategory.findAll({
-      where: { userId: { [Op.in]: keysToCheck } }
+      where: { userId: s8User.id }
     });
     const ciCategories = ciAssignments.map(a => a.categoryId);
 

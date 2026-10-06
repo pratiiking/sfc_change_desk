@@ -22,41 +22,22 @@ const findUserS8ByKey = async (userKey) => {
 
 // ---------- Category Assignments for Change Managers ----------
 
+// userId is always a hot_desk_users.id now (category_role_assignments.user_id
+// is a real FK to it) — no more EMP-/S8- alias-prefix forms to normalize.
+const toHotDeskUserId = (userId) => {
+  const n = Number(String(userId).replace(/^(S8-|EMP-|usr-)/, ''));
+  return Number.isNaN(n) ? null : n;
+};
+
 export const getChangeManagerCategoriesService = async (userId) => {
-  if (!userId) {
-    const assignments = await ChangeManagerCategory.findAll({ raw: true });
-    return assignments.map((a) => ({ userId: a.userId, categoryId: a.categoryId }));
-  }
-  const normalizedKeys = [String(userId)];
-  if (typeof userId === 'string' && userId.startsWith('EMP-')) {
-    normalizedKeys.push(userId.replace('EMP-', ''));
-  } else if (typeof userId === 'string' && userId.startsWith('S8-')) {
-    normalizedKeys.push(userId.replace('S8-', ''));
-  } else if (!isNaN(Number(userId))) {
-    normalizedKeys.push(`EMP-${userId}`);
-    normalizedKeys.push(`S8-${userId}`);
-  }
-  const assignments = await ChangeManagerCategory.findAll({
-    where: { userId: { [Op.in]: normalizedKeys } },
-    raw: true
-  });
+  const where = userId ? { userId: toHotDeskUserId(userId) } : {};
+  const assignments = await ChangeManagerCategory.findAll({ where, raw: true });
   return assignments.map((a) => ({ userId: a.userId, categoryId: a.categoryId }));
 };
 
 export const updateChangeManagerCategoriesService = async (userId, categoryIds = []) => {
-  const normalizedKeys = [String(userId)];
-  if (typeof userId === 'string' && userId.startsWith('EMP-')) {
-    normalizedKeys.push(userId.replace('EMP-', ''));
-  } else if (typeof userId === 'string' && userId.startsWith('S8-')) {
-    normalizedKeys.push(userId.replace('S8-', ''));
-  } else if (!isNaN(Number(userId))) {
-    normalizedKeys.push(`EMP-${userId}`);
-    normalizedKeys.push(`S8-${userId}`);
-  }
-
-  const current = await ChangeManagerCategory.findAll({
-    where: { userId: { [Op.in]: normalizedKeys } }
-  });
+  const id = toHotDeskUserId(userId);
+  const current = await ChangeManagerCategory.findAll({ where: { userId: id } });
   const currentCatIds = current.map((c) => c.categoryId);
 
   const toAdd = categoryIds.filter((cid) => !currentCatIds.includes(cid));
@@ -64,13 +45,13 @@ export const updateChangeManagerCategoriesService = async (userId, categoryIds =
 
   if (toRemove.length > 0) {
     await ChangeManagerCategory.destroy({
-      where: { userId: { [Op.in]: normalizedKeys }, categoryId: { [Op.in]: toRemove } }
+      where: { userId: id, categoryId: { [Op.in]: toRemove } }
     });
   }
 
   for (const cid of toAdd) {
-    const id = `cmc-${userId}-${cid}`;
-    await ChangeManagerCategory.upsert({ id, userId: String(userId), categoryId: cid }).catch(() => {});
+    const cmcId = `cmc-${id}-${cid}`;
+    await ChangeManagerCategory.upsert({ id: cmcId, userId: id, categoryId: cid }).catch(() => {});
   }
 
   return getChangeManagerCategoriesService(userId);
@@ -79,40 +60,14 @@ export const updateChangeManagerCategoriesService = async (userId, categoryIds =
 // ---------- Category Assignments for Change Implementers ----------
 
 export const getChangeImplementerCategoriesService = async (userId) => {
-  if (!userId) {
-    const assignments = await ChangeImplementerCategory.findAll({ raw: true });
-    return assignments.map((a) => ({ userId: a.userId, categoryId: a.categoryId }));
-  }
-  const normalizedKeys = [String(userId)];
-  if (typeof userId === 'string' && userId.startsWith('EMP-')) {
-    normalizedKeys.push(userId.replace('EMP-', ''));
-  } else if (typeof userId === 'string' && userId.startsWith('S8-')) {
-    normalizedKeys.push(userId.replace('S8-', ''));
-  } else if (!isNaN(Number(userId))) {
-    normalizedKeys.push(`EMP-${userId}`);
-    normalizedKeys.push(`S8-${userId}`);
-  }
-  const assignments = await ChangeImplementerCategory.findAll({
-    where: { userId: { [Op.in]: normalizedKeys } },
-    raw: true
-  });
+  const where = userId ? { userId: toHotDeskUserId(userId) } : {};
+  const assignments = await ChangeImplementerCategory.findAll({ where, raw: true });
   return assignments.map((a) => ({ userId: a.userId, categoryId: a.categoryId }));
 };
 
 export const updateChangeImplementerCategoriesService = async (userId, categoryIds = []) => {
-  const normalizedKeys = [String(userId)];
-  if (typeof userId === 'string' && userId.startsWith('EMP-')) {
-    normalizedKeys.push(userId.replace('EMP-', ''));
-  } else if (typeof userId === 'string' && userId.startsWith('S8-')) {
-    normalizedKeys.push(userId.replace('S8-', ''));
-  } else if (!isNaN(Number(userId))) {
-    normalizedKeys.push(`EMP-${userId}`);
-    normalizedKeys.push(`S8-${userId}`);
-  }
-
-  const current = await ChangeImplementerCategory.findAll({
-    where: { userId: { [Op.in]: normalizedKeys } }
-  });
+  const id = toHotDeskUserId(userId);
+  const current = await ChangeImplementerCategory.findAll({ where: { userId: id } });
   const currentCatIds = current.map((c) => c.categoryId);
 
   const toAdd = categoryIds.filter((cid) => !currentCatIds.includes(cid));
@@ -120,13 +75,13 @@ export const updateChangeImplementerCategoriesService = async (userId, categoryI
 
   if (toRemove.length > 0) {
     await ChangeImplementerCategory.destroy({
-      where: { userId: { [Op.in]: normalizedKeys }, categoryId: { [Op.in]: toRemove } }
+      where: { userId: id, categoryId: { [Op.in]: toRemove } }
     });
   }
 
   for (const cid of toAdd) {
-    const id = `cic-${userId}-${cid}`;
-    await ChangeImplementerCategory.upsert({ id, userId: String(userId), categoryId: cid }).catch(() => {});
+    const cicId = `cic-${id}-${cid}`;
+    await ChangeImplementerCategory.upsert({ id: cicId, userId: id, categoryId: cid }).catch(() => {});
   }
 
   IdentityResolver.clearCache();

@@ -118,7 +118,7 @@ CatalogSubcategoryField.belongsTo(CatalogSubcategory, { as: 'subcategory', forei
 // services) keeps working completely unchanged.
 const categoryAssignmentFields = {
   id: { type: DataTypes.STRING, primaryKey: true },
-  userId: { type: DataTypes.STRING, allowNull: false },
+  userId: { type: DataTypes.INTEGER, allowNull: false, references: { model: 'hot_desk_users', key: 'id' }, onDelete: 'CASCADE' },
   categoryId: { type: DataTypes.STRING, allowNull: false, references: { model: 'catalog_categories', key: 'id' }, onDelete: 'CASCADE' },
   type: { type: DataTypes.STRING, allowNull: false }
 };
