@@ -176,6 +176,11 @@ import { TravelRequest } from './TravelRequest.js';
 import { NotificationJob } from './NotificationJob.js';
 export { PreSpendRequest, TravelRequest, NotificationJob };
 
+PreSpendRequest.belongsTo(Employee, { foreignKey: 'employeeId', targetKey: 'empId', as: 'employeeRecord' });
+PreSpendRequest.belongsTo(Employee, { foreignKey: 'managerId', targetKey: 'empId', as: 'managerRecord' });
+TravelRequest.belongsTo(Employee, { foreignKey: 'employeeId', targetKey: 'empId', as: 'employeeRecord' });
+TravelRequest.belongsTo(Employee, { foreignKey: 'managerId', targetKey: 'empId', as: 'managerRecord' });
+
 export const models = {
   Role,
   CatalogCategory,

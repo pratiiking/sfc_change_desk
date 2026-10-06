@@ -15,20 +15,27 @@ export const PreSpendRequest = sequelize.define(
       unique: true,
       field: 'request_code'
     },
-    requesterId: {
+    // employeeId/managerId are the only stored identity columns -- requesterName/
+    // requesterEmail/managerName/managerEmail below are VIRTUAL, derived from the
+    // employeeRecord/managerRecord associations (see models/index.js), so this
+    // data can never drift from or duplicate the employees table.
+    employeeId: {
+      type: DataTypes.STRING(64),
+      allowNull: false,
+      field: 'employee_id'
+    },
+    managerId: {
       type: DataTypes.STRING(64),
       allowNull: true,
-      field: 'requester_id'
+      field: 'manager_id'
     },
     requesterName: {
-      type: DataTypes.STRING(255),
-      allowNull: true,
-      field: 'requester_name'
+      type: DataTypes.VIRTUAL,
+      get() { return this.employeeRecord?.name ?? null; }
     },
     requesterEmail: {
-      type: DataTypes.STRING(255),
-      allowNull: true,
-      field: 'requester_email'
+      type: DataTypes.VIRTUAL,
+      get() { return this.employeeRecord?.email ?? null; }
     },
     category: {
       type: DataTypes.STRING(100),
@@ -122,14 +129,12 @@ export const PreSpendRequest = sequelize.define(
       field: 'approval_cycle'
     },
     managerName: {
-      type: DataTypes.STRING(255),
-      allowNull: true,
-      field: 'manager_name'
+      type: DataTypes.VIRTUAL,
+      get() { return this.managerRecord?.name ?? null; }
     },
     managerEmail: {
-      type: DataTypes.STRING(255),
-      allowNull: true,
-      field: 'manager_email'
+      type: DataTypes.VIRTUAL,
+      get() { return this.managerRecord?.email ?? null; }
     },
     managerReviewEnteredAt: {
       type: DataTypes.DATE,

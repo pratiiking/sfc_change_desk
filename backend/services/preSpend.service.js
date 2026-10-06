@@ -19,31 +19,53 @@ export const generatePreSpendCode = async (_tx = null) => {
   return await getNextRequestCode('PS', _tx);
 };
 
+// The single place that answers "which employees.emp_id is this email?" --
+// used everywhere we need to know who the currently acting person is in
+// employee-directory terms, since there is no stored requesterId/login-
+// identity column on pre_spend_requests anymore.
+const resolveEmployeeIdByEmail = async (email) => {
+  const trimmed = (email || '').trim().toLowerCase();
+  if (!trimmed) return null;
+  const emp = await Employee.findOne({
+    where: sequelize.where(sequelize.fn('LOWER', sequelize.col('email')), trimmed),
+    attributes: ['empId']
+  });
+  return emp?.empId || null;
+};
+
 export const createPreSpendService = async (data, user) => {
   const requestCode = await generatePreSpendCode();
   const requesterId = user?.userKey || user?.id || user?.email || 'unknown';
-  const requesterName = user?.displayName || user?.name || user?.email || 'User';
-  const requesterEmail = user?.email || '';
 
-  let validManagerName = null;
-  let validManagerEmail = data.managerEmail || data.Manager ? String(data.managerEmail || data.Manager).trim() : '';
+  const requesterEmailInput = (user?.email || '').trim();
+  const empRecord = requesterEmailInput
+    ? await Employee.findOne({ where: sequelize.where(sequelize.fn('LOWER', sequelize.col('email')), requesterEmailInput.toLowerCase()) })
+    : null;
+  if (!empRecord) {
+    const err = new Error('Unable to resolve your employee record. A Pre-Spend request cannot be created without a valid employee identity.');
+    err.statusCode = 400;
+    throw err;
+  }
+  const employeeId = empRecord.empId;
 
-  if (validManagerEmail) {
+  let validManagerId = null;
+  const managerEmailInput = data.managerEmail || data.Manager ? String(data.managerEmail || data.Manager).trim() : '';
+
+  if (managerEmailInput) {
     const mgrEmp = await Employee.findOne({
-      where: sequelize.where(sequelize.fn('LOWER', sequelize.col('email')), validManagerEmail.toLowerCase())
+      where: sequelize.where(sequelize.fn('LOWER', sequelize.col('email')), managerEmailInput.toLowerCase())
     });
     if (!mgrEmp) {
-      const err = new Error(`Selected manager "${validManagerEmail}" is not found in the employee directory.`);
+      const err = new Error(`Selected manager "${managerEmailInput}" is not found in the employee directory.`);
       err.statusCode = 400;
       throw err;
     }
     if (mgrEmp.leftAt || mgrEmp.leftReason || mgrEmp.leftBy) {
-      const err = new Error(`Selected manager "${validManagerEmail}" is inactive/exited.`);
+      const err = new Error(`Selected manager "${managerEmailInput}" is inactive/exited.`);
       err.statusCode = 400;
       throw err;
     }
-    validManagerName = mgrEmp.name || null;
-    validManagerEmail = mgrEmp.email || validManagerEmail;
+    validManagerId = mgrEmp.empId;
   }
 
   // Process vendor quotes: upload base64/file payloads to Azure Blob storage
@@ -80,9 +102,8 @@ export const createPreSpendService = async (data, user) => {
 
   const created = await PreSpendRequest.create({
     requestCode,
-    requesterId,
-    requesterName,
-    requesterEmail,
+    employeeId,
+    managerId: validManagerId,
     category: data.category || 'General',
     subcategory: data.subcategory || '',
     itemDescription: data.buying || data.itemDescription || '',
@@ -100,8 +121,6 @@ export const createPreSpendService = async (data, user) => {
     commercialReason: data.commercial?.reason || data.commercialReason || '',
     commercialJustification: data.commercial?.justification || data.commercialJustification || '',
     policyCertified: Boolean(data.certified || data.policyCertified),
-    managerName: validManagerName,
-    managerEmail: validManagerEmail,
     ...initialApprovalState(),
   });
 
@@ -113,14 +132,17 @@ export const createPreSpendService = async (data, user) => {
   });
 
   // Enqueue initial Stage 1 Manager Invitation
-  if (validManagerEmail) {
-    enqueueNotification({
-      module: 'prespend',
-      requestId: created.id,
-      approvalCycle: created.approvalCycle,
-      jobType: 'manager_invitation',
-      recipientEmail: validManagerEmail
-    }).catch((err) => console.error('[mail] Queue pre-spend manager invite failed:', err.message));
+  if (validManagerId) {
+    const mgrRecord = await Employee.findOne({ where: { empId: validManagerId }, attributes: ['email'] });
+    if (mgrRecord?.email) {
+      enqueueNotification({
+        module: 'prespend',
+        requestId: created.id,
+        approvalCycle: created.approvalCycle,
+        jobType: 'manager_invitation',
+        recipientEmail: mgrRecord.email
+      }).catch((err) => console.error('[mail] Queue pre-spend manager invite failed:', err.message));
+    }
   }
 
   return created;
@@ -133,27 +155,17 @@ export const getPreSpendRequestsService = async ({ user, userId, isWorklist = fa
   const currentUserEmail = (user?.email || '').toLowerCase().trim();
   const isOrgView = isOrgWorklist || organizationScope;
 
+  const myEmployeeId = currentUserEmail ? await resolveEmployeeIdByEmail(currentUserEmail) : null;
+
   // 1. My Dashboard View (not worklist and not organization scope): Only requests raised by the logged-in user
   if (!isWorklist && !isOrgView && currentUserId) {
-    if (currentUserEmail) {
-      andConditions.push({
-        [Op.or]: [
-          { requesterId: currentUserId },
-          { requesterEmail: { [Op.iLike]: currentUserEmail } }
-        ]
-      });
-    } else {
-      andConditions.push({ requesterId: currentUserId });
-    }
+    andConditions.push({ employeeId: myEmployeeId || '__no_match__' });
   }
 
   // 2. My Worklist View (personal approver inbox): Exclude requests raised by the logged-in user
   if (isWorklist && !isOrgWorklist && (currentUserId || currentUserEmail)) {
-    if (currentUserId) {
-      andConditions.push({ requesterId: { [Op.ne]: currentUserId } });
-    }
-    if (currentUserEmail) {
-      andConditions.push({ requesterEmail: { [Op.notILike]: currentUserEmail } });
+    if (myEmployeeId) {
+      andConditions.push({ employeeId: { [Op.ne]: myEmployeeId } });
     }
   }
 
@@ -177,7 +189,7 @@ export const getPreSpendRequestsService = async ({ user, userId, isWorklist = fa
         { requestCode: { [Op.iLike]: `%${searchQuery}%` } },
         { itemDescription: { [Op.iLike]: `%${searchQuery}%` } },
         { category: { [Op.iLike]: `%${searchQuery}%` } },
-        { requesterName: { [Op.iLike]: `%${searchQuery}%` } }
+        { '$employeeRecord.name$': { [Op.iLike]: `%${searchQuery}%` } }
       ]
     });
   }
@@ -196,6 +208,11 @@ export const getPreSpendRequestsService = async ({ user, userId, isWorklist = fa
   const offset = (safePage - 1) * safeLimit;
   const { rows, count } = await PreSpendRequest.findAndCountAll({
     where,
+    include: [
+      { model: Employee, as: 'employeeRecord' },
+      { model: Employee, as: 'managerRecord' }
+    ],
+    subQuery: false,
     order: [['createdAt', 'DESC']],
     limit: safeLimit,
     offset
@@ -205,22 +222,14 @@ export const getPreSpendRequestsService = async ({ user, userId, isWorklist = fa
   const scopedWhere = {};
   if (isWorklist && !isOrgWorklist && (currentUserId || currentUserEmail)) {
     const andConditions = [];
-    if (currentUserId) andConditions.push({ requesterId: { [Op.ne]: currentUserId } });
-    if (currentUserEmail) andConditions.push({ requesterEmail: { [Op.notILike]: currentUserEmail } });
+    if (myEmployeeId) andConditions.push({ employeeId: { [Op.ne]: myEmployeeId } });
     if (dateClause) andConditions.push(dateClause);
     if (andConditions.length > 0) scopedWhere[Op.and] = andConditions;
   } else if (dateClause) {
     scopedWhere[Op.and] = [dateClause];
   }
   if (!isWorklist && !isOrgView && currentUserId) {
-    if (currentUserEmail) {
-      scopedWhere[Op.or] = [
-        { requesterId: currentUserId },
-        { requesterEmail: { [Op.iLike]: currentUserEmail } }
-      ];
-    } else {
-      scopedWhere.requesterId = currentUserId;
-    }
+    scopedWhere.employeeId = myEmployeeId || '__no_match__';
   }
 
   const [statusAggregates, categoryAggregates] = await Promise.all([
@@ -351,8 +360,7 @@ export const getPreSpendRequestsService = async ({ user, userId, isWorklist = fa
     const isAdmin = user?.roleId === ROLE.ADMIN_LEGACY || (user?.role || '').toLowerCase().trim() === 'admin';
 
     const exclusions = [];
-    if (currentUserId) exclusions.push({ requesterId: { [Op.ne]: currentUserId } });
-    if (currentUserEmail) exclusions.push({ requesterEmail: { [Op.notILike]: currentUserEmail } });
+    if (myEmployeeId) exclusions.push({ employeeId: { [Op.ne]: myEmployeeId } });
 
     if (isSuperAdmin || isBoardUser || isPreSpendAdmin || isAdmin) {
       const actionableWhere = { status: { [Op.iLike]: '%Pending%' } };
@@ -362,10 +370,13 @@ export const getPreSpendRequestsService = async ({ user, userId, isWorklist = fa
       // Line manager pending stage 1 reviews
       const actionableWhere = {
         status: { [Op.iLike]: '%Pending%' },
-        managerEmail: { [Op.iLike]: currentUserEmail }
+        '$managerRecord.email$': { [Op.iLike]: currentUserEmail }
       };
       if (exclusions.length > 0) actionableWhere[Op.and] = exclusions;
-      actionableCount = await PreSpendRequest.count({ where: actionableWhere });
+      actionableCount = await PreSpendRequest.count({
+        where: actionableWhere,
+        include: [{ model: Employee, as: 'managerRecord', attributes: [] }]
+      });
     }
   }
 
@@ -464,19 +475,19 @@ const handlePreSpendActionWithinTransaction = async ({ id, action, actionComment
     actorRole === 'admin' ||
     actorRolesList.some(r => r === ROLE.ADMIN_LEGACY || r === 'admin');
 
-  // Integrity Rule: Users cannot approve/reject their own requests across all aliases
+  // req is row-locked (no include) -- resolve the employee/manager emails we
+  // need for comparisons via direct lookups rather than the virtual getters.
   const actorId = actor?.userKey || actor?.id || actor?.email || '';
   const actorEmail = (actor?.email || '').toLowerCase().trim();
-  const reqEmail = (req.requesterEmail || '').toLowerCase().trim();
-  const reqId = String(req.requesterId || '');
+  const [reqEmployeeRecord, reqManagerRecord] = await Promise.all([
+    req.employeeId ? Employee.findOne({ where: { empId: req.employeeId }, attributes: ['name', 'email'] }) : null,
+    req.managerId ? Employee.findOne({ where: { empId: req.managerId }, attributes: ['name', 'email'] }) : null
+  ]);
+  const reqEmail = (reqEmployeeRecord?.email || '').toLowerCase().trim();
 
-  const actorAliases = new Set([actorId, actor?.userKey, actor?.id, actor?.employeeBusinessId, actorEmail].filter(Boolean));
-  if (Array.isArray(actor?.aliases)) {
-    actor.aliases.forEach(a => actorAliases.add(String(a)));
-  }
-
+  // Integrity Rule: Users cannot approve/reject their own requests
   if (
-    actorAliases.has(reqId) ||
+    (actor?.employeeBusinessId && req.employeeId && String(actor.employeeBusinessId) === String(req.employeeId)) ||
     (actorEmail && reqEmail && actorEmail === reqEmail)
   ) {
     const err = new Error('Separation of duties violation: You cannot approve or reject your own pre-spend request.');
@@ -489,7 +500,7 @@ const handlePreSpendActionWithinTransaction = async ({ id, action, actionComment
 
   if (isStage1) {
     // Stage 1: Reporting Manager review
-    const managerEmailLower = (req.managerEmail || '').toLowerCase().trim();
+    const managerEmailLower = (reqManagerRecord?.email || '').toLowerCase().trim();
     const isAssignedManager = Boolean(managerEmailLower && actorEmail && managerEmailLower === actorEmail);
 
     if (!isAssignedManager && !isSuperAdmin && !isAdmin) {
@@ -519,8 +530,8 @@ const handlePreSpendActionWithinTransaction = async ({ id, action, actionComment
         module: 'prespend',
         requestCode: req.requestCode,
         title: req.itemDescription,
-        requesterEmail: req.requesterEmail,
-        requesterName: req.requesterName,
+        requesterEmail: reqEmployeeRecord?.email || null,
+        requesterName: reqEmployeeRecord?.name || null,
         managerName: actor?.displayName || actor?.name || 'Manager',
         managerEmail: actor?.email,
         comment: actionComment
@@ -568,8 +579,8 @@ const handlePreSpendActionWithinTransaction = async ({ id, action, actionComment
         const approverEmails = boardEmails.length ? boardEmails : adminEmails;
         sendPreSpendCreatedEmail({
           preSpend: req.toJSON ? req.toJSON() : req,
-          requesterName: req.requesterName,
-          requesterEmail: req.requesterEmail,
+          requesterName: reqEmployeeRecord?.name || null,
+          requesterEmail: reqEmployeeRecord?.email || null,
           approverEmails
         });
       }).catch((err) => console.error('[mail] pre-spend Stage 2 notify failed:', err.message));
@@ -626,7 +637,13 @@ const handlePreSpendActionWithinTransaction = async ({ id, action, actionComment
     const ccRecipients = Array.from(new Set([...adminEmails, ...financeEmail])).filter(Boolean);
 
     sendPreSpendDecisionEmail({
-      preSpend: req.toJSON ? req.toJSON() : req,
+      preSpend: {
+        ...(req.toJSON ? req.toJSON() : req),
+        requesterEmail: reqEmployeeRecord?.email || null,
+        requesterName: reqEmployeeRecord?.name || null,
+        managerEmail: reqManagerRecord?.email || null,
+        managerName: reqManagerRecord?.name || null
+      },
       action,
       comment: actionComment,
       deciderName: actor?.displayName || actor?.name || actor?.email || deciderRoleLabel,

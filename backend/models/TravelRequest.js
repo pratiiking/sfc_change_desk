@@ -15,20 +15,27 @@ export const TravelRequest = sequelize.define(
       unique: true,
       field: 'request_code'
     },
-    requesterId: {
+    // employeeId/managerId are the only stored identity columns -- travellerName/
+    // travellerEmail/managerName/managerEmail below are VIRTUAL, derived from the
+    // employeeRecord/managerRecord associations (see models/index.js), so this
+    // data can never drift from or duplicate the employees table.
+    employeeId: {
+      type: DataTypes.STRING(64),
+      allowNull: false,
+      field: 'employee_id'
+    },
+    managerId: {
       type: DataTypes.STRING(64),
       allowNull: true,
-      field: 'requester_id'
+      field: 'manager_id'
     },
     travellerName: {
-      type: DataTypes.STRING(255),
-      allowNull: false,
-      field: 'traveller_name'
+      type: DataTypes.VIRTUAL,
+      get() { return this.employeeRecord?.name ?? null; }
     },
     travellerEmail: {
-      type: DataTypes.STRING(255),
-      allowNull: true,
-      field: 'traveller_email'
+      type: DataTypes.VIRTUAL,
+      get() { return this.employeeRecord?.email ?? null; }
     },
     travelMode: {
       type: DataTypes.STRING(32),
@@ -99,14 +106,12 @@ export const TravelRequest = sequelize.define(
       field: 'approval_cycle'
     },
     managerName: {
-      type: DataTypes.STRING(255),
-      allowNull: true,
-      field: 'manager_name'
+      type: DataTypes.VIRTUAL,
+      get() { return this.managerRecord?.name ?? null; }
     },
     managerEmail: {
-      type: DataTypes.STRING(255),
-      allowNull: true,
-      field: 'manager_email'
+      type: DataTypes.VIRTUAL,
+      get() { return this.managerRecord?.email ?? null; }
     },
     managerReviewEnteredAt: {
       type: DataTypes.DATE,

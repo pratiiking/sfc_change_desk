@@ -18,11 +18,23 @@ export const generateTravelCode = async (_tx = null) => {
   return await getNextRequestCode('TR', _tx);
 };
 
+// The single place that answers "which employees.emp_id is this email?" --
+// used everywhere we need to know who the currently acting person is in
+// employee-directory terms, since there is no stored requesterId/login-
+// identity column on travel_requests anymore.
+const resolveEmployeeIdByEmail = async (email) => {
+  const trimmed = (email || '').trim().toLowerCase();
+  if (!trimmed) return null;
+  const emp = await Employee.findOne({
+    where: sequelize.where(sequelize.fn('LOWER', sequelize.col('email')), trimmed),
+    attributes: ['empId']
+  });
+  return emp?.empId || null;
+};
+
 export const createTravelService = async (data, user) => {
   const requestCode = await generateTravelCode();
   const requesterId = user?.userKey || user?.id || user?.email || 'unknown';
-  const travellerName = data.travellerName || data.Traveller || user?.displayName || user?.name || 'Traveller';
-  const travellerEmail = data.travellerEmail || user?.email || '';
   const departureDate = data.departureDate || data['Date of travel'] || data['Date of journey'] || data['Check-in date'] || null;
   const travelMode = data.travelMode || data.category || 'Flight';
   const isFlight = travelMode.toLowerCase() === 'flight' || travelMode.toLowerCase() === 'flights';
@@ -62,32 +74,41 @@ export const createTravelService = async (data, user) => {
     }
   }
 
-  let validManagerName = null;
-  let validManagerEmail = data.managerEmail || data.Manager ? String(data.managerEmail || data.Manager).trim() : '';
+  const travellerEmailInput = (user?.email || '').trim();
+  const empRecord = travellerEmailInput
+    ? await Employee.findOne({ where: sequelize.where(sequelize.fn('LOWER', sequelize.col('email')), travellerEmailInput.toLowerCase()) })
+    : null;
+  if (!empRecord) {
+    const err = new Error('Unable to resolve your employee record. A Travel request cannot be created without a valid employee identity.');
+    err.statusCode = 400;
+    throw err;
+  }
+  const employeeId = empRecord.empId;
 
-  if (validManagerEmail) {
+  let validManagerId = null;
+  const managerEmailInput = data.managerEmail || data.Manager ? String(data.managerEmail || data.Manager).trim() : '';
+
+  if (managerEmailInput) {
     const mgrEmp = await Employee.findOne({
-      where: sequelize.where(sequelize.fn('LOWER', sequelize.col('email')), validManagerEmail.toLowerCase())
+      where: sequelize.where(sequelize.fn('LOWER', sequelize.col('email')), managerEmailInput.toLowerCase())
     });
     if (!mgrEmp) {
-      const err = new Error(`Selected manager "${validManagerEmail}" is not found in the employee directory.`);
+      const err = new Error(`Selected manager "${managerEmailInput}" is not found in the employee directory.`);
       err.statusCode = 400;
       throw err;
     }
     if (mgrEmp.leftAt || mgrEmp.leftReason || mgrEmp.leftBy) {
-      const err = new Error(`Selected manager "${validManagerEmail}" is inactive/exited.`);
+      const err = new Error(`Selected manager "${managerEmailInput}" is inactive/exited.`);
       err.statusCode = 400;
       throw err;
     }
-    validManagerName = mgrEmp.name || null;
-    validManagerEmail = mgrEmp.email || validManagerEmail;
+    validManagerId = mgrEmp.empId;
   }
 
   const created = await TravelRequest.create({
     requestCode,
-    requesterId,
-    travellerName,
-    travellerEmail,
+    employeeId,
+    managerId: validManagerId,
     travelMode,
     purpose: data.purpose || data['Purpose of visit'] || '',
     tripType: data.tripType || data['Trip type'] || data['Journey type'] || '',
@@ -100,8 +121,6 @@ export const createTravelService = async (data, user) => {
     isShortNotice,
     bookingDetails: data.bookingDetails || data.drafts || data,
     policyCertified: Boolean(data.certified || data.policyCertified),
-    managerName: validManagerName,
-    managerEmail: validManagerEmail,
     ...initialApprovalState(),
     status: 'Pending Approval'
   });
@@ -110,18 +129,21 @@ export const createTravelService = async (data, user) => {
     actorId: requesterId,
     action: 'Created Travel Reservation',
     ref: requestCode,
-    detail: `Submitted Travel request ${requestCode} for ${created.travellerName} (${created.travelMode}: ${created.fromLocation || 'Origin'} → ${created.toLocation || 'Destination'}) for Manager review.`
+    detail: `Submitted Travel request ${requestCode} for ${empRecord.name} (${created.travelMode}: ${created.fromLocation || 'Origin'} → ${created.toLocation || 'Destination'}) for Manager review.`
   });
 
   // Enqueue initial Stage 1 Manager Invitation
-  if (validManagerEmail) {
-    enqueueNotification({
-      module: 'travel',
-      requestId: created.id,
-      approvalCycle: created.approvalCycle,
-      jobType: 'manager_invitation',
-      recipientEmail: validManagerEmail
-    }).catch((err) => console.error('[mail] Queue travel manager invite failed:', err.message));
+  if (validManagerId) {
+    const mgrRecord = await Employee.findOne({ where: { empId: validManagerId }, attributes: ['email'] });
+    if (mgrRecord?.email) {
+      enqueueNotification({
+        module: 'travel',
+        requestId: created.id,
+        approvalCycle: created.approvalCycle,
+        jobType: 'manager_invitation',
+        recipientEmail: mgrRecord.email
+      }).catch((err) => console.error('[mail] Queue travel manager invite failed:', err.message));
+    }
   }
 
   return created;
@@ -134,27 +156,17 @@ export const getTravelRequestsService = async ({ user, userId, isWorklist = fals
   const currentUserEmail = (user?.email || '').toLowerCase().trim();
   const isOrgView = isOrgWorklist || organizationScope;
 
+  const myEmployeeId = currentUserEmail ? await resolveEmployeeIdByEmail(currentUserEmail) : null;
+
   // 1. My Dashboard View (not worklist and not organization scope): Only requests raised by the logged-in user
   if (!isWorklist && !isOrgView && currentUserId) {
-    if (currentUserEmail) {
-      andConditions.push({
-        [Op.or]: [
-          { requesterId: currentUserId },
-          { travellerEmail: { [Op.iLike]: currentUserEmail } }
-        ]
-      });
-    } else {
-      andConditions.push({ requesterId: currentUserId });
-    }
+    andConditions.push({ employeeId: myEmployeeId || '__no_match__' });
   }
 
   // 2. My Worklist View (personal approver inbox): Exclude requests raised by the logged-in user
   if (isWorklist && !isOrgWorklist && (currentUserId || currentUserEmail)) {
-    if (currentUserId) {
-      andConditions.push({ requesterId: { [Op.ne]: currentUserId } });
-    }
-    if (currentUserEmail) {
-      andConditions.push({ travellerEmail: { [Op.notILike]: currentUserEmail } });
+    if (myEmployeeId) {
+      andConditions.push({ employeeId: { [Op.ne]: myEmployeeId } });
     }
   }
 
@@ -176,7 +188,7 @@ export const getTravelRequestsService = async ({ user, userId, isWorklist = fals
     andConditions.push({
       [Op.or]: [
         { requestCode: { [Op.iLike]: `%${searchQuery}%` } },
-        { travellerName: { [Op.iLike]: `%${searchQuery}%` } },
+        { '$employeeRecord.name$': { [Op.iLike]: `%${searchQuery}%` } },
         { travelMode: { [Op.iLike]: `%${searchQuery}%` } },
         { purpose: { [Op.iLike]: `%${searchQuery}%` } },
         { fromLocation: { [Op.iLike]: `%${searchQuery}%` } },
@@ -199,6 +211,11 @@ export const getTravelRequestsService = async ({ user, userId, isWorklist = fals
   const offset = (safePage - 1) * safeLimit;
   const { rows, count } = await TravelRequest.findAndCountAll({
     where,
+    include: [
+      { model: Employee, as: 'employeeRecord' },
+      { model: Employee, as: 'managerRecord' }
+    ],
+    subQuery: false,
     order: [['createdAt', 'DESC']],
     limit: safeLimit,
     offset
@@ -208,22 +225,14 @@ export const getTravelRequestsService = async ({ user, userId, isWorklist = fals
   const scopedWhere = {};
   if (isWorklist && !isOrgWorklist && (currentUserId || currentUserEmail)) {
     const andConditions = [];
-    if (currentUserId) andConditions.push({ requesterId: { [Op.ne]: currentUserId } });
-    if (currentUserEmail) andConditions.push({ travellerEmail: { [Op.notILike]: currentUserEmail } });
+    if (myEmployeeId) andConditions.push({ employeeId: { [Op.ne]: myEmployeeId } });
     if (dateClause) andConditions.push(dateClause);
     if (andConditions.length > 0) scopedWhere[Op.and] = andConditions;
   } else if (dateClause) {
     scopedWhere[Op.and] = [dateClause];
   }
   if (!isWorklist && !isOrgView && currentUserId) {
-    if (currentUserEmail) {
-      scopedWhere[Op.or] = [
-        { requesterId: currentUserId },
-        { travellerEmail: { [Op.iLike]: currentUserEmail } }
-      ];
-    } else {
-      scopedWhere.requesterId = currentUserId;
-    }
+    scopedWhere.employeeId = myEmployeeId || '__no_match__';
   }
 
   const allItems = await TravelRequest.findAll({ where: scopedWhere, attributes: ['status', 'travelMode'] });
@@ -345,20 +354,21 @@ export const getTravelRequestsService = async ({ user, userId, isWorklist = fals
         if (currentUserEmail) {
           const managerWhere = {
             status: { [Op.iLike]: '%Pending%' },
-            managerEmail: { [Op.iLike]: currentUserEmail }
+            '$managerRecord.email$': { [Op.iLike]: currentUserEmail }
           };
           const exclusions = [];
-          if (currentUserId) exclusions.push({ requesterId: { [Op.ne]: currentUserId } });
-          if (currentUserEmail) exclusions.push({ travellerEmail: { [Op.notILike]: currentUserEmail } });
+          if (myEmployeeId) exclusions.push({ employeeId: { [Op.ne]: myEmployeeId } });
           if (exclusions.length > 0) managerWhere[Op.and] = exclusions;
-          return TravelRequest.count({ where: managerWhere });
+          return TravelRequest.count({
+            where: managerWhere,
+            include: [{ model: Employee, as: 'managerRecord', attributes: [] }]
+          });
         }
         return 0;
       }
 
       const exclusions = [];
-      if (currentUserId) exclusions.push({ requesterId: { [Op.ne]: currentUserId } });
-      if (currentUserEmail) exclusions.push({ travellerEmail: { [Op.notILike]: currentUserEmail } });
+      if (myEmployeeId) exclusions.push({ employeeId: { [Op.ne]: myEmployeeId } });
 
       const actionableWhere = { status: { [Op.iLike]: '%Pending%' } };
       if (exclusions.length > 0) actionableWhere[Op.and] = exclusions;
@@ -432,19 +442,19 @@ const handleTravelActionWithinTransaction = async ({ id, action, actionComment, 
     actorRole === 'admin' ||
     actorRolesList.some(r => r === ROLE.ADMIN_LEGACY || r === 'admin');
 
-  // Integrity Rule: Users cannot approve/reject their own requests across all aliases
+  // req is row-locked (no include) -- resolve the employee/manager emails we
+  // need for comparisons via direct lookups rather than the virtual getters.
   const actorId = actor?.userKey || actor?.id || actor?.email || '';
   const actorEmail = (actor?.email || '').toLowerCase().trim();
-  const reqEmail = (req.travellerEmail || '').toLowerCase().trim();
-  const reqId = String(req.requesterId || '');
+  const [reqEmployeeRecord, reqManagerRecord] = await Promise.all([
+    req.employeeId ? Employee.findOne({ where: { empId: req.employeeId }, attributes: ['name', 'email'] }) : null,
+    req.managerId ? Employee.findOne({ where: { empId: req.managerId }, attributes: ['name', 'email'] }) : null
+  ]);
+  const reqEmail = (reqEmployeeRecord?.email || '').toLowerCase().trim();
 
-  const actorAliases = new Set([actorId, actor?.userKey, actor?.id, actor?.employeeBusinessId, actorEmail].filter(Boolean));
-  if (Array.isArray(actor?.aliases)) {
-    actor.aliases.forEach(a => actorAliases.add(String(a)));
-  }
-
+  // Integrity Rule: Users cannot approve/reject their own requests
   if (
-    actorAliases.has(reqId) ||
+    (actor?.employeeBusinessId && req.employeeId && String(actor.employeeBusinessId) === String(req.employeeId)) ||
     (actorEmail && reqEmail && actorEmail === reqEmail)
   ) {
     const err = new Error('Separation of duties violation: You cannot approve or reject your own travel request.');
@@ -457,7 +467,7 @@ const handleTravelActionWithinTransaction = async ({ id, action, actionComment, 
 
   if (isStage1) {
     // Stage 1: Reporting Manager Review
-    const managerEmailLower = (req.managerEmail || '').toLowerCase().trim();
+    const managerEmailLower = (reqManagerRecord?.email || '').toLowerCase().trim();
     const isAssignedManager = Boolean(managerEmailLower && actorEmail && managerEmailLower === actorEmail);
 
     if (!isAssignedManager && !isSuperAdmin && !isAdmin) {
@@ -487,8 +497,8 @@ const handleTravelActionWithinTransaction = async ({ id, action, actionComment, 
         module: 'travel',
         requestCode: req.requestCode,
         title: `${req.fromLocation} → ${req.toLocation}`,
-        requesterEmail: req.travellerEmail,
-        requesterName: req.travellerName,
+        requesterEmail: reqEmployeeRecord?.email || null,
+        requesterName: reqEmployeeRecord?.name || null,
         managerName: actor?.displayName || actor?.name || 'Manager',
         managerEmail: actor?.email,
         comment: actionComment
@@ -532,8 +542,8 @@ const handleTravelActionWithinTransaction = async ({ id, action, actionComment, 
       getTravelDeskApproverEmails(req.isShortNotice).then((approverEmails) => {
         sendTravelCreatedEmail({
           travelReq: req.toJSON ? req.toJSON() : req,
-          requesterName: req.travellerName,
-          requesterEmail: req.travellerEmail,
+          requesterName: reqEmployeeRecord?.name || null,
+          requesterEmail: reqEmployeeRecord?.email || null,
           approverEmails,
           isShortNotice: req.isShortNotice
         });
@@ -594,7 +604,13 @@ const handleTravelActionWithinTransaction = async ({ id, action, actionComment, 
     const ccRecipients = Array.from(new Set([...adminEmails, ...financeEmail])).filter(Boolean);
 
     sendTravelDecisionEmail({
-      travelReq: req.toJSON ? req.toJSON() : req,
+      travelReq: {
+        ...(req.toJSON ? req.toJSON() : req),
+        travellerEmail: reqEmployeeRecord?.email || null,
+        travellerName: reqEmployeeRecord?.name || null,
+        managerEmail: reqManagerRecord?.email || null,
+        managerName: reqManagerRecord?.name || null
+      },
       action,
       comment: actionComment,
       deciderName: actor?.displayName || actor?.name || actor?.email || 'Approver',
