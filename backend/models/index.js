@@ -9,7 +9,7 @@ export const Role = sequelize.define(
     id: { type: DataTypes.UUID, primaryKey: true },
     name: { type: DataTypes.STRING, allowNull: false },
     description: { type: DataTypes.TEXT },
-    permissions: { type: DataTypes.JSONB, defaultValue: [] },
+    authority: { type: DataTypes.JSONB, defaultValue: [] },
     rank: { type: DataTypes.INTEGER, allowNull: false }
   },
   { tableName: 'hot_desk_roles', timestamps: false }

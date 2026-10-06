@@ -253,18 +253,6 @@ export const serializeUser = (row) => {
   };
 };
 
-// Needs include: users (id only) – usersCount is derived
-export const serializeRole = (row) => {
-  const r = plain(row);
-  return {
-    id: r.id,
-    name: r.name,
-    usersCount: Array.isArray(r.users) ? r.users.length : (r.usersCount ?? 0),
-    description: r.description,
-    permissions: r.permissions
-  };
-};
-
 export const serializeAuditLog = (row, actorIdentity = null) => {
   const l = plain(row);
   const act = l.action || '';

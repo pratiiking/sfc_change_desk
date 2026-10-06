@@ -582,7 +582,7 @@ export const getSettingsRolesService = async () => {
       rank: plainRole.rank,
       usersCount: counts[plainRole.id] || 0,
       description: plainRole.description,
-      permissions: plainRole.permissions
+      permissions: plainRole.authority
     };
   });
 };
@@ -595,7 +595,7 @@ export const updateRolePermissionsService = async (roleId, permissions = [], act
     throw err;
   }
 
-  role.permissions = permissions;
+  role.authority = permissions;
   await role.save();
 
   await addAuditLog({
@@ -612,7 +612,7 @@ export const updateRolePermissionsService = async (roleId, permissions = [], act
     name: plainRole.name,
     usersCount,
     description: plainRole.description,
-    permissions: plainRole.permissions
+    permissions: plainRole.authority
   };
 };
 

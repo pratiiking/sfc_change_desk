@@ -210,8 +210,8 @@ export class IdentityResolver {
     });
     const ciCategories = ciAssignments.map(a => a.categoryId);
 
-    const roleRow = await Role.findByPk(roleId, { attributes: ['permissions'] });
-    const permissions = Array.isArray(roleRow?.permissions) ? roleRow.permissions : [];
+    const roleRow = await Role.findByPk(roleId, { attributes: ['authority'] });
+    const permissions = Array.isArray(roleRow?.authority) ? roleRow.authority : [];
 
     const rolesList = [{ roleId, roleName }];
     const assignedRoleIds = [roleId];
