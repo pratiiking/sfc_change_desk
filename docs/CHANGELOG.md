@@ -47,6 +47,14 @@ see `architecture.md`; for practical gotchas arising from these changes, see `KT
 - **026** — Revised rank ordering: Admin promoted above the three module admins (was previously the
   same rank as Change Desk Admin), Change Manager promoted above Change Implementer (was previously
   the same rank). Pure data change, took effect immediately with no code touched.
+- **027** — Replaced `hot_desk_roles.permissions`'s decorative display labels with real, namespaced
+  permission keys, and replaced every backend `requireRole([...])` route guard (9 route files) with
+  `requirePermission(key)`, which checks `req.user.permissions` — resolved live from this column by
+  `IdentityResolver`, not a hardcoded role-ID list baked into each route. Editing a role's permissions
+  via Settings now genuinely changes what it can do. Assignments reproduce exactly the access each
+  role already had (a faithfulness pass, not an access expansion). Frontend route/tab visibility
+  (`permissions.lib.js`) is a separate, not-yet-converted UX layer — the backend guards are the real
+  boundary regardless of what the frontend shows.
 
 ## Dead weight removed
 

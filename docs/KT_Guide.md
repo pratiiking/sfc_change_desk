@@ -78,8 +78,11 @@ Fox systems (see `employees`/`UserS8`'s origin in `architecture.md`).
   `SettingsRoute` guard + sidebar visibility) to more tiers, while deciding how far down the hierarchy
   that access should go (down to Admin-tier? down to Change Manager/Implementer too?), is the natural
   next step — see `architecture.md` §2.
-- **`hot_desk_roles.permissions` is cosmetic** — see `architecture.md` §4. Wiring it into real
-  enforcement is a genuine RBAC project, not attempted here given the blast radius.
+- **`hot_desk_roles.permissions` is real on the backend now, not yet on the frontend** — see
+  `architecture.md` §4. Every backend route guard checks it; `permissions.lib.js` and page-level
+  `isXxx` checks on the frontend are still the old hardcoded role-ID layer (UX-only — the backend is
+  the real boundary, so this isn't a security gap, just an inconsistency between what the UI offers
+  and what the backend allows).
 - **Pre-Spend/Travel approval history** is a JSONB array on the request row, inconsistent with Change
   Request's normalized `change_request_approvals` child table — see `architecture.md` §3.
 - **`identities`/`identity_aliases` tables** are fully dead (nothing reads them) but not yet dropped —

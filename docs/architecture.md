@@ -123,29 +123,37 @@ the request row itself) instead of a normalized child table. This inconsistency 
 modules is known and unresolved — normalizing Pre-Spend/Travel onto the same `*_approvals` child-table
 pattern as Change Request would be the "proper" fix, but is a real migration, not a quick change.
 
-## 4. Known limitation: `hot_desk_roles.permissions` is cosmetic, not enforced
+## 4. `hot_desk_roles.permissions` — real on the backend, not yet on the frontend
 
-This is the most important thing to understand about the current permission system: **the
-`permissions` JSONB column (e.g. `["Approve / Reject CRs", "Manage Users"]`) is display text only.**
-Editing it via Settings → Roles does not change anyone's actual access. Every real authorization
-decision in the app is a hand-written role-ID comparison:
+**Backend (the actual security boundary): real, enforced.** `hot_desk_roles.permissions` is now a
+JSONB array of namespaced permission keys (`settings.users.manage`, `changeRequest.worklist.view`,
+`dashboard.export`, `dashboard.org.view`, `preSpend.worklist.view`, `travel.worklist.view`,
+`settings.roles.manage`, `settings.auditLogs.view`, `catalog.subcategory.manage`). Every backend route
+guard (`middlewares/auth.middleware.js`'s `requirePermission(key)`, used across all 9
+`routes/*.routes.js` files) checks this array — resolved fresh onto `req.user.permissions` by
+`IdentityResolver` on every request — instead of a hardcoded role-ID list. Editing a role's permissions
+via Settings → Roles now genuinely changes what that role's accounts can do. Super Admin still bypasses
+everything via `req.user.isSuperAdmin`, same as before.
 
-- Backend route guards: `requireRole(['Super Admin', ROLE.SUPER_ADMIN, ...])` arrays, one per route,
-  scattered across all 9 `routes/*.routes.js` files.
-- Backend service-level flags: `isSuperAdmin`/`isChangeManager`/etc., computed in
-  `IdentityResolver._buildIdentityDTO` from `rolesList.includes(ROLE.X)`.
-- Frontend: `getAllowedWorklistModules` in `permissions.lib.js`, plus ad-hoc `roleId === ROLE.X` checks
-  scattered through page components.
+Current key → role assignment reproduces exactly the access each role had before this change (see
+migration 027) — this was a faithfulness pass, not an access-expansion. The still-open item from §2
+(Settings being Super-Admin-only despite rank supporting more tiers) remains open; the route guards
+are now DB-driven, but nobody's `permissions` array yet includes `settings.users.manage` except Super
+Admin.
 
-None of these consult `hot_desk_roles.permissions`. If this matters for production (it should — a
-"Manage Roles & Permissions" admin feature that doesn't actually do anything is a real gap for an
-internal tool heading toward real use), the fix is a genuine RBAC layer: define a fixed set of
-permission strings, have every route guard and every `isXxx` flag check
-`role.permissions.includes('some.permission')` instead of a role-ID list, and have
-`IdentityResolver`/`authenticateUser` attach the resolved permission set to the identity once per
-request (one extra join, not a query-per-check). This touches every route file and most service files
-— a real, carefully-staged project, not a drop-in change. Flagged here deliberately rather than
-attempted inline, given the blast radius of getting it wrong in a single pass.
+**Frontend: still the old hardcoded layer, not yet converted.** `getAllowedWorklistModules` in
+`permissions.lib.js` and the various `isXxx`/`roleId === ROLE.X` checks scattered through page
+components are UI-only (which tabs/buttons render) — the backend route guards above are what actually
+enforce access regardless of what the frontend shows. Converting the frontend to also read from
+`permissions` (via `req.user.permissions`, already propagated through `publicUser()`) would make the UI
+consistent with the backend (not showing a tab the backend will reject) but is not a security fix —
+it's a UX one, deliberately left for a follow-up pass.
+
+Backend service-level flags (`isSuperAdmin`/`isChangeManager`/etc. computed in
+`IdentityResolver._buildIdentityDTO`) were intentionally left as role-ID checks rather than converted
+to permission checks — they encode identity ("is this person a Change Manager," used for category
+scoping and business logic throughout the approval workflow), which is a different concept from route
+authorization ("can this request reach this endpoint"). Only the latter was converted.
 
 ## 5. Two historical role-assignment mechanisms still coexist
 
