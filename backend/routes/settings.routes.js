@@ -21,7 +21,7 @@ router.get('/settings/users', requirePermission('settings.users.manage'), getSet
 router.post('/settings/users', requirePermission('settings.users.manage'), createSettingsUser);
 router.patch('/settings/users/:id', requirePermission('settings.users.manage'), updateSettingsUser);
 router.delete('/settings/users/:id', requirePermission('settings.users.manage'), deleteSettingsUser);
-router.get('/settings/roles', requirePermission('settings.roles.manage'), getSettingsRoles);
+router.get('/settings/roles', requirePermission('settings.roles.view'), getSettingsRoles);
 router.patch('/settings/roles/:id', requirePermission('settings.roles.manage'), updateRolePermissions);
 router.get('/settings/audit-logs', requirePermission('settings.auditLogs.view'), getSettingsAuditLogs);
 router.post('/settings/audit-logs/export', requirePermission('settings.auditLogs.view'), exportAuditLogs);

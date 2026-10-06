@@ -218,7 +218,8 @@ function Sidebar({
           visibleMgmtItems.push({ id: 'Organization Dashboard', path: '/org-dashboard', label: 'Organization Dashboard', icon: LayoutGrid });
         }
 
-        if (isSuperAdmin) {
+        const canManageUsers = Array.isArray(user?.permissions) && user.permissions.includes('settings.users.manage');
+        if (canManageUsers) {
           visibleMgmtItems.push({ id: 'Settings', path: '/settings', label: 'Settings', icon: Settings });
         }
 

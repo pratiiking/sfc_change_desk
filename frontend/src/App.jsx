@@ -102,10 +102,9 @@ function WorklistRoute() {
 
 function SettingsRoute() {
   const { user, searchQuery, onNavigate } = useOutletContext();
-  const roleName = (user?.role || '').toLowerCase();
-  const isSuperAdmin = user?.roleId === ROLE.SUPER_ADMIN || roleName.includes('super');
+  const canManageUsers = Array.isArray(user?.permissions) && user.permissions.includes('settings.users.manage');
 
-  if (!isSuperAdmin) {
+  if (!canManageUsers) {
     return <Navigate to="/dashboard" replace />;
   }
 

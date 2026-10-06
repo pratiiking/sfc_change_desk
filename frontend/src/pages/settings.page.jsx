@@ -29,6 +29,7 @@ function SettingsPage({ user }) {
   const toast = useToast();
   const isSuperAdmin = user?.roleId === ROLE.SUPER_ADMIN || (user?.role || '').toLowerCase() === 'super admin';
   const isRequester = !isSuperAdmin && (user?.roleId === ROLE.REQUESTER || user?.role === 'Requester');
+  const canManageUsers = Array.isArray(user?.permissions) && user.permissions.includes('settings.users.manage');
 
   const [isSavingUser, setIsSavingUser] = useState(false);
   const [isLoadingCategories, setIsLoadingCategories] = useState(false);
@@ -460,11 +461,11 @@ function SettingsPage({ user }) {
     'User & role changes'
   ];
 
-  if (!isSuperAdmin) {
+  if (!canManageUsers) {
     return (
       <div className="rounded-xl border border-border bg-card p-8 text-center">
         <h2 className="mb-2 text-xl font-medium text-foreground">Access Restricted</h2>
-        <p className="text-sm text-muted-foreground">Settings and user management are accessible to Super Admin users only.</p>
+        <p className="text-sm text-muted-foreground">Settings and user management are not accessible to your role.</p>
       </div>
     );
   }
@@ -484,7 +485,7 @@ function SettingsPage({ user }) {
         </div>
 
         {/* Right Header Actions */}
-        {isSuperAdmin && activeTab === 'users' && (
+        {canManageUsers && activeTab === 'users' && (
           <button
             onClick={() => setIsInviteModalOpen(true)}
             className="inline-flex cursor-pointer items-center gap-[0.4rem] rounded-lg border-0 bg-primary px-[1.1rem] py-[0.55rem] text-[0.85rem] font-medium text-[#FFFFFF] shadow-[0_1px_3px_rgba(0,0,0,0.2)]"
