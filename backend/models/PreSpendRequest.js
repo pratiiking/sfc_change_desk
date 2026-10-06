@@ -86,15 +86,9 @@ export const PreSpendRequest = sequelize.define(
       allowNull: true,
       field: 'urgent_reason'
     },
-    vendors: {
-      type: DataTypes.JSONB,
-      defaultValue: []
-    },
-    selectedVendor: {
-      type: DataTypes.STRING(255),
-      allowNull: true,
-      field: 'selected_vendor'
-    },
+    // vendors used to be a JSONB array here -- now PreSpendVendorQuote rows
+    // (see models/index.js), one per quote, with isSelected replacing the
+    // old selectedVendor name-matching string.
     commercialException: {
       type: DataTypes.STRING(100),
       allowNull: true,
@@ -141,12 +135,9 @@ export const PreSpendRequest = sequelize.define(
       type: DataTypes.BOOLEAN,
       defaultValue: false,
       field: 'policy_certified'
-    },
-    approvalHistory: {
-      type: DataTypes.JSONB,
-      defaultValue: [],
-      field: 'approval_history'
     }
+    // approvalHistory used to be a JSONB array here -- now PreSpendApproval
+    // rows (see models/index.js), one per Stage 1/Stage 2 decision.
   },
   {
     tableName: 'pre_spend_requests',

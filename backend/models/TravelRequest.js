@@ -122,12 +122,9 @@ export const TravelRequest = sequelize.define(
       type: DataTypes.BOOLEAN,
       defaultValue: false,
       field: 'policy_certified'
-    },
-    approvalHistory: {
-      type: DataTypes.JSONB,
-      defaultValue: [],
-      field: 'approval_history'
     }
+    // approvalHistory used to be a JSONB array here -- now TravelApproval
+    // rows (see models/index.js), one per Stage 1/Stage 2 decision.
   },
   {
     tableName: 'travel_requests',

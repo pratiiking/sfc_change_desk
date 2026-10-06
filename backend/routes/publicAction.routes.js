@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import { ChangeRequest, ChangeRequestApproval, Employee } from '../models/index.js';
 import { PreSpendRequest } from '../models/PreSpendRequest.js';
 import { TravelRequest } from '../models/TravelRequest.js';
+import { PreSpendApproval, TravelApproval } from '../models/index.js';
 import { serializeChangeRequest } from '../utils/serializers.js';
 import {
   applyWorklistActionService,
@@ -55,8 +56,12 @@ router.get('/change-request-action', async (req, res) => {
         ? (!isManagerReviewStage(ps.approvalStage) || !isPending)
         : !isPending;
 
-      const lastAction = Array.isArray(ps.approvalHistory) && ps.approvalHistory.length > 0
-        ? ps.approvalHistory[ps.approvalHistory.length - 1]
+      const lastAction = isAlreadyProcessed
+        ? await PreSpendApproval.findOne({
+            where: { preSpendRequestId: ps.id },
+            include: [{ model: Employee, as: 'decider' }],
+            order: [['decidedAt', 'DESC']]
+          })
         : null;
 
       const isStage1 = isManagerReviewStage(ps.approvalStage);
@@ -76,12 +81,12 @@ router.get('/change-request-action', async (req, res) => {
           isAlreadyProcessed,
           alreadyProcessedDetails: isAlreadyProcessed ? {
             status: ps.status,
-            action: lastAction?.action || (ps.status === 'Approved' ? 'approve' : ps.status === 'Rejected' ? 'reject' : 'processed'),
+            action: ps.status === 'Approved' ? 'approve' : ps.status === 'Rejected' ? 'reject' : 'processed',
             decision: lastAction?.decision || ps.status,
-            decidedBy: lastAction?.actorName || ps.managerName || 'Approver',
-            decidedByEmail: lastAction?.actorEmail || null,
+            decidedBy: lastAction?.decider?.name || ps.managerName || 'Approver',
+            decidedByEmail: lastAction?.decider?.email || null,
             comment: lastAction?.comment || null,
-            timestamp: lastAction?.timestamp || ps.updatedAt
+            timestamp: lastAction?.decidedAt || ps.updatedAt
           } : null
         }
       });
@@ -103,8 +108,12 @@ router.get('/change-request-action', async (req, res) => {
         ? (!isManagerReviewStage(tr.approvalStage) || !isPending)
         : !isPending;
 
-      const lastAction = Array.isArray(tr.approvalHistory) && tr.approvalHistory.length > 0
-        ? tr.approvalHistory[tr.approvalHistory.length - 1]
+      const lastAction = isAlreadyProcessed
+        ? await TravelApproval.findOne({
+            where: { travelRequestId: tr.id },
+            include: [{ model: Employee, as: 'decider' }],
+            order: [['decidedAt', 'DESC']]
+          })
         : null;
 
       const isStage1 = isManagerReviewStage(tr.approvalStage);
@@ -124,12 +133,12 @@ router.get('/change-request-action', async (req, res) => {
           isAlreadyProcessed,
           alreadyProcessedDetails: isAlreadyProcessed ? {
             status: tr.status,
-            action: lastAction?.action || (tr.status === 'Approved' ? 'approve' : tr.status === 'Rejected' ? 'reject' : 'processed'),
+            action: tr.status === 'Approved' ? 'approve' : tr.status === 'Rejected' ? 'reject' : 'processed',
             decision: lastAction?.decision || tr.status,
-            decidedBy: lastAction?.actorName || tr.managerName || 'Approver',
-            decidedByEmail: lastAction?.actorEmail || null,
+            decidedBy: lastAction?.decider?.name || tr.managerName || 'Approver',
+            decidedByEmail: lastAction?.decider?.email || null,
             comment: lastAction?.comment || null,
-            timestamp: lastAction?.timestamp || tr.updatedAt
+            timestamp: lastAction?.decidedAt || tr.updatedAt
           } : null
         }
       });

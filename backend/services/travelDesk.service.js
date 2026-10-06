@@ -2,6 +2,7 @@ import { Op } from 'sequelize';
 import { APPROVAL_STAGE, isManagerReviewStage, isStage2ReviewStage, initialApprovalState } from '../config/approvalWorkflow.js';
 import { ROLE } from '../config/constants.js';
 import { TravelRequest } from '../models/TravelRequest.js';
+import { TravelApproval } from '../models/index.js';
 import { Employee } from '../models/Employee.js';
 import { sequelize, getNextRequestCode } from '../config/database.js';
 import { getTravelDeskApproverEmails, getTravelAdminEmails, getBoardMemberEmails } from './userManagement.service.js';
@@ -221,6 +222,24 @@ export const getTravelRequestsService = async ({ user, userId, isWorklist = fals
     offset
   });
 
+  // approvalRecords is hasMany -- fetched separately for just this page's
+  // rows, rather than joined into the paginated query above, since a hasMany
+  // join combined with LIMIT/OFFSET (needed for the $employeeRecord.name$
+  // search filter above) would corrupt pagination.
+  const pageIds = rows.map((r) => r.id);
+  const approvalsByRequest = pageIds.length > 0
+    ? await TravelApproval.findAll({
+        where: { travelRequestId: { [Op.in]: pageIds } },
+        include: [{ model: Employee, as: 'decider' }],
+        order: [['decidedAt', 'ASC']]
+      })
+    : [];
+  const approvalMap = new Map();
+  approvalsByRequest.forEach((a) => {
+    if (!approvalMap.has(a.travelRequestId)) approvalMap.set(a.travelRequestId, []);
+    approvalMap.get(a.travelRequestId).push(a);
+  });
+
   // Calculate high-level summary counts strictly within the scoped where (excluding self requests in personal worklist, respecting dateClause without restricting by status filter)
   const scopedWhere = {};
   if (isWorklist && !isOrgWorklist && (currentUserId || currentUserEmail)) {
@@ -252,63 +271,56 @@ export const getTravelRequestsService = async ({ user, userId, isWorklist = fals
     modeCounts[m] = (modeCounts[m] || 0) + 1;
   });
 
-  const formattedItems = rows.map(r => ({
-    id: r.id,
-    requestCode: r.requestCode,
-    travellerName: r.travellerName,
-    travellerEmail: r.travellerEmail,
-    department: r.department,
-    travelMode: r.travelMode,
-    category: r.travelMode,
-    title: `${r.travelMode}: ${r.fromLocation || ''} → ${r.toLocation || ''}`,
-    purpose: r.purpose,
-    tripType: r.tripType,
-    travelClass: r.travelClass,
-    fromLocation: r.fromLocation,
-    toLocation: r.toLocation,
-    departureDate: r.departureDate,
-    returnDate: r.returnDate,
-    preferredTimeSlot: r.preferredTimeSlot,
-    isShortNotice: r.isShortNotice,
-    bookingDetails: r.bookingDetails || {},
-    status: r.status,
-    approvalStage: r.approvalStage || APPROVAL_STAGE.MANAGER_REVIEW,
-    managerName: r.managerName || null,
-    managerEmail: r.managerEmail || null,
-    policyCertified: r.policyCertified,
-    approvalHistory: r.approvalHistory || [],
-    comments: Array.isArray(r.approvalHistory) ? r.approvalHistory.map((h, idx) => ({
-      id: `act-${idx}`,
-      authorName: h.actorName || 'Reviewer',
-      authorRole: h.actorRole || 'Approver',
-      text: h.comment || '',
-      action: h.decision || h.action,
-      createdAt: h.timestamp
-    })) : [],
-    decidedBy: (Array.isArray(r.approvalHistory) && r.approvalHistory.length > 0)
-      ? r.approvalHistory[r.approvalHistory.length - 1].actorName
-      : null,
-    decidedByEmail: (Array.isArray(r.approvalHistory) && r.approvalHistory.length > 0)
-      ? r.approvalHistory[r.approvalHistory.length - 1].actorEmail
-      : null,
-    approvedComment: (Array.isArray(r.approvalHistory) && r.approvalHistory.find(h => h.action === 'approve'))
-      ? r.approvalHistory.find(h => h.action === 'approve').comment
-      : null,
-    approvedDate: (Array.isArray(r.approvalHistory) && r.approvalHistory.find(h => h.action === 'approve'))
-      ? new Date(r.approvalHistory.find(h => h.action === 'approve').timestamp).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
-      : null,
-    rejectedComment: (Array.isArray(r.approvalHistory) && r.approvalHistory.find(h => h.action === 'reject'))
-      ? r.approvalHistory.find(h => h.action === 'reject').comment
-      : null,
-    rejectionReason: (Array.isArray(r.approvalHistory) && r.approvalHistory.find(h => h.action === 'reject'))
-      ? r.approvalHistory.find(h => h.action === 'reject').comment
-      : null,
-    closedDate: (Array.isArray(r.approvalHistory) && r.approvalHistory.length > 0 && r.status !== 'Pending Approval')
-      ? new Date(r.approvalHistory[r.approvalHistory.length - 1].timestamp).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
-      : null,
-    createdAt: r.createdAt,
-    submittedAt: r.createdAt
-  }));
+  const formattedItems = rows.map(r => {
+    const approvals = approvalMap.get(r.id) || [];
+    const lastApproval = approvals[approvals.length - 1] || null;
+    const approvedRecord = approvals.find(a => /approved/i.test(a.decision));
+    const rejectedRecord = approvals.find(a => /rejected/i.test(a.decision));
+    const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : null;
+
+    return {
+      id: r.id,
+      requestCode: r.requestCode,
+      travellerName: r.travellerName,
+      travellerEmail: r.travellerEmail,
+      department: r.department,
+      travelMode: r.travelMode,
+      category: r.travelMode,
+      title: `${r.travelMode}: ${r.fromLocation || ''} → ${r.toLocation || ''}`,
+      purpose: r.purpose,
+      tripType: r.tripType,
+      travelClass: r.travelClass,
+      fromLocation: r.fromLocation,
+      toLocation: r.toLocation,
+      departureDate: r.departureDate,
+      returnDate: r.returnDate,
+      preferredTimeSlot: r.preferredTimeSlot,
+      isShortNotice: r.isShortNotice,
+      bookingDetails: r.bookingDetails || {},
+      status: r.status,
+      approvalStage: r.approvalStage || APPROVAL_STAGE.MANAGER_REVIEW,
+      managerName: r.managerName || null,
+      managerEmail: r.managerEmail || null,
+      policyCertified: r.policyCertified,
+      comments: approvals.map((h, idx) => ({
+        id: `act-${idx}`,
+        authorName: h.decider?.name || 'Reviewer',
+        authorRole: h.deciderRole || 'Approver',
+        text: h.comment || '',
+        action: h.decision,
+        createdAt: h.decidedAt
+      })),
+      decidedBy: lastApproval?.decider?.name || null,
+      decidedByEmail: lastApproval?.decider?.email || null,
+      approvedComment: approvedRecord?.comment || null,
+      approvedDate: fmtDate(approvedRecord?.decidedAt),
+      rejectedComment: rejectedRecord?.comment || null,
+      rejectionReason: rejectedRecord?.comment || null,
+      closedDate: (lastApproval && r.status !== 'Pending Approval') ? fmtDate(lastApproval.decidedAt) : null,
+      createdAt: r.createdAt,
+      submittedAt: r.createdAt
+    };
+  });
 
   return {
     data: formattedItems,
@@ -451,6 +463,12 @@ const handleTravelActionWithinTransaction = async ({ id, action, actionComment, 
     req.managerId ? Employee.findOne({ where: { empId: req.managerId }, attributes: ['name', 'email'] }) : null
   ]);
   const reqEmail = (reqEmployeeRecord?.email || '').toLowerCase().trim();
+  const deciderEmployeeId = actor?.employeeBusinessId || await resolveEmployeeIdByEmail(actor?.email);
+  if (!deciderEmployeeId) {
+    const err = new Error('Unable to resolve your employee record. Cannot record this decision.');
+    err.statusCode = 400;
+    throw err;
+  }
 
   // Integrity Rule: Users cannot approve/reject their own requests
   if (
@@ -477,21 +495,19 @@ const handleTravelActionWithinTransaction = async ({ id, action, actionComment, 
     }
 
     if (action === 'reject') {
-      const history = Array.isArray(req.approvalHistory) ? [...req.approvalHistory] : [];
-      history.push({
-        action: 'reject',
-        decision: 'Rejected by Manager',
-        comment: actionComment,
-        actorName: actor?.displayName || actor?.name || actor?.email || 'Reporting Manager',
-        actorEmail: actor?.email || '',
-        actorRole: 'Reporting Manager',
-        timestamp: new Date().toISOString()
-      });
-
       req.status = 'Rejected';
       req.approvalStage = APPROVAL_STAGE.REJECTED;
-      req.approvalHistory = history;
       await req.save({ transaction });
+
+      await TravelApproval.create({
+        travelRequestId: req.id,
+        stage: 'manager_review',
+        employeeId: deciderEmployeeId,
+        deciderRole: 'Reporting Manager',
+        decision: 'Rejected by Manager',
+        comment: actionComment,
+        decidedAt: new Date()
+      }, { transaction });
 
       sendManagerRejectionEmail({
         module: 'travel',
@@ -515,21 +531,19 @@ const handleTravelActionWithinTransaction = async ({ id, action, actionComment, 
     }
 
     if (action === 'approve') {
-      const history = Array.isArray(req.approvalHistory) ? [...req.approvalHistory] : [];
-      history.push({
-        action: 'approve',
-        decision: 'Manager Approved',
-        comment: actionComment,
-        actorName: actor?.displayName || actor?.name || actor?.email || 'Reporting Manager',
-        actorEmail: actor?.email || '',
-        actorRole: 'Reporting Manager',
-        timestamp: new Date().toISOString()
-      });
-
       req.status = 'Pending Approval';
       req.approvalStage = APPROVAL_STAGE.STAGE_2_REVIEW;
-      req.approvalHistory = history;
       await req.save({ transaction });
+
+      await TravelApproval.create({
+        travelRequestId: req.id,
+        stage: 'manager_review',
+        employeeId: deciderEmployeeId,
+        deciderRole: 'Reporting Manager',
+        decision: 'Manager Approved',
+        comment: actionComment,
+        decidedAt: new Date()
+      }, { transaction });
 
       await addAuditLog({
         actorId: actorId || actor?.userKey || actor?.id,
@@ -570,21 +584,20 @@ const handleTravelActionWithinTransaction = async ({ id, action, actionComment, 
 
   const deciderRoleLabel = isBoardUser ? 'Board Member' : isAdmin ? 'Admin' : isTravelAdmin ? 'Travel Admin' : 'Super Admin';
   const newStatus = action === 'approve' ? 'Approved' : 'Rejected';
-  const history = Array.isArray(req.approvalHistory) ? [...req.approvalHistory] : [];
-  history.push({
-    action,
-    decision: newStatus,
-    comment: actionComment,
-    actorName: actor?.displayName || actor?.name || actor?.email || 'Approver',
-    actorEmail: actor?.email || '',
-    actorRole: deciderRoleLabel,
-    timestamp: new Date().toISOString()
-  });
 
   req.status = newStatus;
   req.approvalStage = action === 'approve' ? APPROVAL_STAGE.COMPLETED : APPROVAL_STAGE.REJECTED;
-  req.approvalHistory = history;
   await req.save({ transaction });
+
+  await TravelApproval.create({
+    travelRequestId: req.id,
+    stage: 'stage_2_review',
+    employeeId: deciderEmployeeId,
+    deciderRole: deciderRoleLabel,
+    decision: newStatus,
+    comment: actionComment,
+    decidedAt: new Date()
+  }, { transaction });
 
   await addAuditLog({
     actorId: actorId || actor?.userKey || actor?.id,

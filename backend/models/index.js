@@ -181,6 +181,66 @@ PreSpendRequest.belongsTo(Employee, { foreignKey: 'managerId', targetKey: 'empId
 TravelRequest.belongsTo(Employee, { foreignKey: 'employeeId', targetKey: 'empId', as: 'employeeRecord' });
 TravelRequest.belongsTo(Employee, { foreignKey: 'managerId', targetKey: 'empId', as: 'managerRecord' });
 
+// ---------- Pre-Spend vendor quotes (was a JSONB array on pre_spend_requests) ----------
+export const PreSpendVendorQuote = sequelize.define(
+  'PreSpendVendorQuote',
+  {
+    id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+    preSpendRequestId: { type: DataTypes.STRING, allowNull: false, field: 'pre_spend_request_id' },
+    name: { type: DataTypes.STRING(255), allowNull: false },
+    amount: { type: DataTypes.DECIMAL(14, 2), allowNull: true },
+    quoteDate: { type: DataTypes.DATEONLY, allowNull: true, field: 'quote_date' },
+    fileName: { type: DataTypes.STRING(255), allowNull: true, field: 'file_name' },
+    fileUrl: { type: DataTypes.STRING(500), allowNull: true, field: 'file_url' },
+    isSelected: { type: DataTypes.BOOLEAN, defaultValue: false, field: 'is_selected' }
+  },
+  { tableName: 'pre_spend_vendor_quotes', timestamps: true, underscored: true }
+);
+PreSpendRequest.hasMany(PreSpendVendorQuote, { foreignKey: 'preSpendRequestId', as: 'vendorQuotes' });
+PreSpendVendorQuote.belongsTo(PreSpendRequest, { foreignKey: 'preSpendRequestId' });
+
+// ---------- Approval decision ledgers (was a JSONB array on each request table) ----------
+// One row per decision (Stage 1 manager review or Stage 2 admin/board review).
+// employeeId is a real FK to employees -- every possible decider (reporting
+// manager, Board member, Admin, Super Admin) is resolvable to a real
+// employee record via email, so this stays consistently employee-anchored
+// across both stages instead of mixing login-identity and employee concepts.
+export const PreSpendApproval = sequelize.define(
+  'PreSpendApproval',
+  {
+    id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+    preSpendRequestId: { type: DataTypes.STRING, allowNull: false, field: 'pre_spend_request_id' },
+    stage: { type: DataTypes.STRING(32), allowNull: false },
+    employeeId: { type: DataTypes.STRING(64), allowNull: false, field: 'employee_id' },
+    deciderRole: { type: DataTypes.STRING(100), allowNull: false, field: 'decider_role' },
+    decision: { type: DataTypes.STRING(20), allowNull: false },
+    comment: { type: DataTypes.TEXT, allowNull: true },
+    decidedAt: { type: DataTypes.DATE, allowNull: false, field: 'decided_at' }
+  },
+  { tableName: 'pre_spend_approvals', timestamps: true, underscored: true }
+);
+PreSpendRequest.hasMany(PreSpendApproval, { foreignKey: 'preSpendRequestId', as: 'approvalRecords' });
+PreSpendApproval.belongsTo(PreSpendRequest, { foreignKey: 'preSpendRequestId' });
+PreSpendApproval.belongsTo(Employee, { foreignKey: 'employeeId', targetKey: 'empId', as: 'decider' });
+
+export const TravelApproval = sequelize.define(
+  'TravelApproval',
+  {
+    id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+    travelRequestId: { type: DataTypes.STRING, allowNull: false, field: 'travel_request_id' },
+    stage: { type: DataTypes.STRING(32), allowNull: false },
+    employeeId: { type: DataTypes.STRING(64), allowNull: false, field: 'employee_id' },
+    deciderRole: { type: DataTypes.STRING(100), allowNull: false, field: 'decider_role' },
+    decision: { type: DataTypes.STRING(20), allowNull: false },
+    comment: { type: DataTypes.TEXT, allowNull: true },
+    decidedAt: { type: DataTypes.DATE, allowNull: false, field: 'decided_at' }
+  },
+  { tableName: 'travel_approvals', timestamps: true, underscored: true }
+);
+TravelRequest.hasMany(TravelApproval, { foreignKey: 'travelRequestId', as: 'approvalRecords' });
+TravelApproval.belongsTo(TravelRequest, { foreignKey: 'travelRequestId' });
+TravelApproval.belongsTo(Employee, { foreignKey: 'employeeId', targetKey: 'empId', as: 'decider' });
+
 export const models = {
   Role,
   CatalogCategory,
@@ -194,7 +254,10 @@ export const models = {
   Employee,
   UserS8,
   PreSpendRequest,
+  PreSpendVendorQuote,
+  PreSpendApproval,
   TravelRequest,
+  TravelApproval,
   NotificationJob
 };
 

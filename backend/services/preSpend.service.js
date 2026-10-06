@@ -2,6 +2,7 @@ import { Op, fn, col } from 'sequelize';
 import { APPROVAL_STAGE, isManagerReviewStage, isStage2ReviewStage, initialApprovalState } from '../config/approvalWorkflow.js';
 import { ROLE } from '../config/constants.js';
 import { PreSpendRequest } from '../models/PreSpendRequest.js';
+import { PreSpendVendorQuote, PreSpendApproval } from '../models/index.js';
 import { Employee } from '../models/Employee.js';
 import { sequelize, getNextRequestCode } from '../config/database.js';
 import { getBoardMemberEmails, getPreSpendAdminEmails } from './userManagement.service.js';
@@ -114,14 +115,25 @@ export const createPreSpendService = async (data, user) => {
     businessJustification: data.justification || data.businessJustification || '',
     isUrgent: Boolean(data.urgent || data.isUrgent),
     urgentReason: data.urgentReason || '',
-    vendors: processedVendors,
-    selectedVendor: data.selectedVendor || (processedVendors[0]?.name || data.vendors?.[0]?.name || ''),
     commercialException: data.commercial?.exception || data.commercialException || '',
     commercialReason: data.commercial?.reason || data.commercialReason || '',
     commercialJustification: data.commercial?.justification || data.commercialJustification || '',
     policyCertified: Boolean(data.certified || data.policyCertified),
     ...initialApprovalState(),
   });
+
+  if (processedVendors.length > 0) {
+    const selectedVendorName = data.selectedVendor || processedVendors[0]?.name || '';
+    await PreSpendVendorQuote.bulkCreate(processedVendors.map((v) => ({
+      preSpendRequestId: created.id,
+      name: v.name,
+      amount: v.amount ? Number(v.amount) : null,
+      quoteDate: v.date || null,
+      fileName: v.fileName || null,
+      fileUrl: v.fileUrl || null,
+      isSelected: Boolean(v.name) && v.name === selectedVendorName
+    })));
+  }
 
   await addAuditLog({
     actorId: requesterId,
@@ -217,6 +229,32 @@ export const getPreSpendRequestsService = async ({ user, userId, isWorklist = fa
     offset
   });
 
+  // vendorQuotes/approvalRecords are hasMany -- fetched separately for just
+  // this page's rows, rather than joined into the paginated query above,
+  // since a hasMany join combined with LIMIT/OFFSET (needed for the
+  // $employeeRecord.name$ search filter above) would corrupt pagination.
+  const pageIds = rows.map((r) => r.id);
+  const [vendorQuotesByRequest, approvalsByRequest] = pageIds.length > 0
+    ? await Promise.all([
+        PreSpendVendorQuote.findAll({ where: { preSpendRequestId: { [Op.in]: pageIds } }, order: [['id', 'ASC']] }),
+        PreSpendApproval.findAll({
+          where: { preSpendRequestId: { [Op.in]: pageIds } },
+          include: [{ model: Employee, as: 'decider' }],
+          order: [['decidedAt', 'ASC']]
+        })
+      ])
+    : [[], []];
+  const vendorQuoteMap = new Map();
+  vendorQuotesByRequest.forEach((v) => {
+    if (!vendorQuoteMap.has(v.preSpendRequestId)) vendorQuoteMap.set(v.preSpendRequestId, []);
+    vendorQuoteMap.get(v.preSpendRequestId).push(v);
+  });
+  const approvalMap = new Map();
+  approvalsByRequest.forEach((a) => {
+    if (!approvalMap.has(a.preSpendRequestId)) approvalMap.set(a.preSpendRequestId, []);
+    approvalMap.get(a.preSpendRequestId).push(a);
+  });
+
   // Calculate summary metrics & category distributions within the scoped where (excluding self in worklist and respecting dateClause, but without the status filter constraint so metric cards and tabs show overall counts)
   const scopedWhere = {};
   if (isWorklist && !isOrgWorklist && (currentUserId || currentUserEmail)) {
@@ -279,72 +317,73 @@ export const getPreSpendRequestsService = async ({ user, userId, isWorklist = fa
     categoryCounts[cat] = parseInt(row.count, 10) || 0;
   });
 
-  const formattedItems = rows.map(r => ({
-    id: r.id,
-    requestCode: r.requestCode,
-    category: r.category,
-    subcategory: r.subcategory,
-    buying: r.itemDescription,
-    title: `${r.category} - ${r.itemDescription}`,
-    itemDescription: r.itemDescription,
-    amount: Number(r.estimatedAmount),
-    estimatedAmount: Number(r.estimatedAmount),
-    neededBy: r.neededByDate,
-    neededByDate: r.neededByDate,
-    costCentre: r.costCentre,
-    budgetLine: r.budgetLine,
-    justification: r.businessJustification,
-    isUrgent: r.isUrgent,
-    urgentReason: r.urgentReason,
-    vendors: r.vendors || [],
-    selectedVendor: r.selectedVendor,
-    commercial: {
-      exception: r.commercialException,
-      reason: r.commercialReason,
-      justification: r.commercialJustification
-    },
-    status: r.status,
-    approvalStage: r.approvalStage || APPROVAL_STAGE.MANAGER_REVIEW,
-    managerName: r.managerName || null,
-    managerEmail: r.managerEmail || null,
-    policyCertified: r.policyCertified,
-    approvalHistory: r.approvalHistory || [],
-    comments: Array.isArray(r.approvalHistory) ? r.approvalHistory.map((h, idx) => ({
-      id: `act-${idx}`,
-      authorName: h.actorName || 'Reviewer',
-      authorRole: h.actorRole || 'Approver',
-      text: h.comment || '',
-      action: h.decision || h.action,
-      createdAt: h.timestamp
-    })) : [],
-    decidedBy: (Array.isArray(r.approvalHistory) && r.approvalHistory.length > 0)
-      ? r.approvalHistory[r.approvalHistory.length - 1].actorName
-      : null,
-    decidedByEmail: (Array.isArray(r.approvalHistory) && r.approvalHistory.length > 0)
-      ? r.approvalHistory[r.approvalHistory.length - 1].actorEmail
-      : null,
-    approvedComment: (Array.isArray(r.approvalHistory) && r.approvalHistory.find(h => h.action === 'approve'))
-      ? r.approvalHistory.find(h => h.action === 'approve').comment
-      : null,
-    approvedDate: (Array.isArray(r.approvalHistory) && r.approvalHistory.find(h => h.action === 'approve'))
-      ? new Date(r.approvalHistory.find(h => h.action === 'approve').timestamp).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
-      : null,
-    rejectedComment: (Array.isArray(r.approvalHistory) && r.approvalHistory.find(h => h.action === 'reject'))
-      ? r.approvalHistory.find(h => h.action === 'reject').comment
-      : null,
-    rejectionReason: (Array.isArray(r.approvalHistory) && r.approvalHistory.find(h => h.action === 'reject'))
-      ? r.approvalHistory.find(h => h.action === 'reject').comment
-      : null,
-    closedDate: (Array.isArray(r.approvalHistory) && r.approvalHistory.length > 0 && r.status !== 'Pending Approval')
-      ? new Date(r.approvalHistory[r.approvalHistory.length - 1].timestamp).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
-      : null,
-    requesterName: r.requesterName,
-    requesterEmail: r.requesterEmail,
-    raisedDate: r.createdAt ? new Date(r.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—',
-    raisedAt: r.createdAt,
-    createdAt: r.createdAt,
-    submittedAt: r.createdAt
-  }));
+  const formattedItems = rows.map(r => {
+    const vendorQuotes = vendorQuoteMap.get(r.id) || [];
+    const approvals = approvalMap.get(r.id) || [];
+    const lastApproval = approvals[approvals.length - 1] || null;
+    const approvedRecord = approvals.find(a => /approved/i.test(a.decision));
+    const rejectedRecord = approvals.find(a => /rejected/i.test(a.decision));
+    const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : null;
+    const selectedVendorQuote = vendorQuotes.find(v => v.isSelected) || vendorQuotes[0] || null;
+
+    return {
+      id: r.id,
+      requestCode: r.requestCode,
+      category: r.category,
+      subcategory: r.subcategory,
+      buying: r.itemDescription,
+      title: `${r.category} - ${r.itemDescription}`,
+      itemDescription: r.itemDescription,
+      amount: Number(r.estimatedAmount),
+      estimatedAmount: Number(r.estimatedAmount),
+      neededBy: r.neededByDate,
+      neededByDate: r.neededByDate,
+      costCentre: r.costCentre,
+      budgetLine: r.budgetLine,
+      justification: r.businessJustification,
+      isUrgent: r.isUrgent,
+      urgentReason: r.urgentReason,
+      vendors: vendorQuotes.map(v => ({
+        name: v.name,
+        amount: v.amount,
+        date: v.quoteDate,
+        fileName: v.fileName,
+        fileUrl: v.fileUrl
+      })),
+      selectedVendor: selectedVendorQuote?.name || null,
+      commercial: {
+        exception: r.commercialException,
+        reason: r.commercialReason,
+        justification: r.commercialJustification
+      },
+      status: r.status,
+      approvalStage: r.approvalStage || APPROVAL_STAGE.MANAGER_REVIEW,
+      managerName: r.managerName || null,
+      managerEmail: r.managerEmail || null,
+      policyCertified: r.policyCertified,
+      comments: approvals.map((h, idx) => ({
+        id: `act-${idx}`,
+        authorName: h.decider?.name || 'Reviewer',
+        authorRole: h.deciderRole || 'Approver',
+        text: h.comment || '',
+        action: h.decision,
+        createdAt: h.decidedAt
+      })),
+      decidedBy: lastApproval?.decider?.name || null,
+      decidedByEmail: lastApproval?.decider?.email || null,
+      approvedComment: approvedRecord?.comment || null,
+      approvedDate: fmtDate(approvedRecord?.decidedAt),
+      rejectedComment: rejectedRecord?.comment || null,
+      rejectionReason: rejectedRecord?.comment || null,
+      closedDate: (lastApproval && r.status !== 'Pending Approval') ? fmtDate(lastApproval.decidedAt) : null,
+      requesterName: r.requesterName,
+      requesterEmail: r.requesterEmail,
+      raisedDate: fmtDate(r.createdAt) || '—',
+      raisedAt: r.createdAt,
+      createdAt: r.createdAt,
+      submittedAt: r.createdAt
+    };
+  });
 
   const totalCount = count || (pending + approved + rejected);
 
@@ -483,6 +522,12 @@ const handlePreSpendActionWithinTransaction = async ({ id, action, actionComment
     req.managerId ? Employee.findOne({ where: { empId: req.managerId }, attributes: ['name', 'email'] }) : null
   ]);
   const reqEmail = (reqEmployeeRecord?.email || '').toLowerCase().trim();
+  const deciderEmployeeId = actor?.employeeBusinessId || await resolveEmployeeIdByEmail(actor?.email);
+  if (!deciderEmployeeId) {
+    const err = new Error('Unable to resolve your employee record. Cannot record this decision.');
+    err.statusCode = 400;
+    throw err;
+  }
 
   // Integrity Rule: Users cannot approve/reject their own requests
   if (
@@ -509,21 +554,19 @@ const handlePreSpendActionWithinTransaction = async ({ id, action, actionComment
     }
 
     if (action === 'reject') {
-      const history = Array.isArray(req.approvalHistory) ? [...req.approvalHistory] : [];
-      history.push({
-        action: 'reject',
-        decision: 'Rejected by Manager',
-        comment: actionComment,
-        actorName: actor?.displayName || actor?.name || actor?.email || 'Reporting Manager',
-        actorEmail: actor?.email || '',
-        actorRole: 'Reporting Manager',
-        timestamp: new Date().toISOString()
-      });
-
       req.status = 'Rejected';
       req.approvalStage = APPROVAL_STAGE.REJECTED;
-      req.approvalHistory = history;
       await req.save({ transaction });
+
+      await PreSpendApproval.create({
+        preSpendRequestId: req.id,
+        stage: 'manager_review',
+        employeeId: deciderEmployeeId,
+        deciderRole: 'Reporting Manager',
+        decision: 'Rejected by Manager',
+        comment: actionComment,
+        decidedAt: new Date()
+      }, { transaction });
 
       sendManagerRejectionEmail({
         module: 'prespend',
@@ -547,21 +590,19 @@ const handlePreSpendActionWithinTransaction = async ({ id, action, actionComment
     }
 
     if (action === 'approve') {
-      const history = Array.isArray(req.approvalHistory) ? [...req.approvalHistory] : [];
-      history.push({
-        action: 'approve',
-        decision: 'Manager Approved',
-        comment: actionComment,
-        actorName: actor?.displayName || actor?.name || actor?.email || 'Reporting Manager',
-        actorEmail: actor?.email || '',
-        actorRole: 'Reporting Manager',
-        timestamp: new Date().toISOString()
-      });
-
       req.status = 'Pending Approval';
       req.approvalStage = APPROVAL_STAGE.STAGE_2_REVIEW;
-      req.approvalHistory = history;
       await req.save({ transaction });
+
+      await PreSpendApproval.create({
+        preSpendRequestId: req.id,
+        stage: 'manager_review',
+        employeeId: deciderEmployeeId,
+        deciderRole: 'Reporting Manager',
+        decision: 'Manager Approved',
+        comment: actionComment,
+        decidedAt: new Date()
+      }, { transaction });
 
       await addAuditLog({
         actorId: actorId || actor?.userKey || actor?.id,
@@ -602,21 +643,20 @@ const handlePreSpendActionWithinTransaction = async ({ id, action, actionComment
 
   const deciderRoleLabel = isBoardUser ? 'Board Member' : isAdmin ? 'Admin' : 'Super Admin';
   const newStatus = action === 'approve' ? 'Approved' : 'Rejected';
-  const history = Array.isArray(req.approvalHistory) ? [...req.approvalHistory] : [];
-  history.push({
-    action,
-    decision: newStatus,
-    comment: actionComment,
-    actorName: actor?.displayName || actor?.name || actor?.email || deciderRoleLabel,
-    actorEmail: actor?.email || '',
-    actorRole: deciderRoleLabel,
-    timestamp: new Date().toISOString()
-  });
 
   req.status = newStatus;
   req.approvalStage = action === 'approve' ? APPROVAL_STAGE.COMPLETED : APPROVAL_STAGE.REJECTED;
-  req.approvalHistory = history;
   await req.save({ transaction });
+
+  await PreSpendApproval.create({
+    preSpendRequestId: req.id,
+    stage: 'stage_2_review',
+    employeeId: deciderEmployeeId,
+    deciderRole: deciderRoleLabel,
+    decision: newStatus,
+    comment: actionComment,
+    decidedAt: new Date()
+  }, { transaction });
 
   await addAuditLog({
     actorId: actorId || actor?.userKey || actor?.id,
@@ -668,23 +708,22 @@ export const getPastVendorBySubcategoryService = async (subcategory = '', catego
   // Find the most recent approved or submitted pre-spend request with vendor information
   const pastReq = await PreSpendRequest.findOne({
     where,
+    include: [{ model: PreSpendVendorQuote, as: 'vendorQuotes' }],
     order: [['createdAt', 'DESC']]
   });
 
   if (!pastReq) return null;
 
-  const vendors = Array.isArray(pastReq.vendors) ? pastReq.vendors : [];
-  const preferredVendor = vendors[0] || null;
+  const quotes = Array.isArray(pastReq.vendorQuotes) ? pastReq.vendorQuotes : [];
+  const preferredVendor = quotes.find(v => v.isSelected) || quotes[0] || null;
 
-  if (!preferredVendor && !pastReq.selectedVendor) return null;
+  if (!preferredVendor) return null;
 
-  const vendorName = preferredVendor?.name || pastReq.selectedVendor;
-  const vendorAmount = preferredVendor?.amount || pastReq.estimatedAmount || 0;
-  const quoteDate = preferredVendor?.date || (pastReq.createdAt ? new Date(pastReq.createdAt).toISOString().split('T')[0] : '');
+  const quoteDate = preferredVendor.quoteDate || (pastReq.createdAt ? new Date(pastReq.createdAt).toISOString().split('T')[0] : '');
 
   return {
-    vendorName,
-    vendorAmount: Number(vendorAmount),
+    vendorName: preferredVendor.name,
+    vendorAmount: Number(preferredVendor.amount || pastReq.estimatedAmount || 0),
     subcategory: pastReq.subcategory || subcategory,
     category: pastReq.category || category,
     quoteDate,
