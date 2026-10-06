@@ -79,12 +79,12 @@ Rank is read live from `hot_desk_roles.rank` (30s TTL cache in `userManagement.s
 hardcoded JS map — this was a deliberate choice after the original design hardcoded it and immediately
 needed revising twice in one session.
 
-**Current gap:** `/settings/users*` and the category-assignment routes are *all* gated
-`requireRole(['Super Admin', ROLE.SUPER_ADMIN])` at the route layer (`routes/settings.routes.js`). The
-rank system above is real and correct, but **unreachable by anyone except Super Admin** today — Board,
-Admin, Change Manager can't get through the door to exercise the management rights their rank implies.
-Opening these routes to more tiers (letting the rank checks do the real gating instead of a blanket
-Super-Admin-only route guard) is flagged but not yet implemented — see `KT_Guide.md` §"Open items."
+**Resolved:** `/settings/users*` and the category-assignment routes are gated by the
+`settings.users.manage` permission (see §4), granted to ranks 1-4 (Super Admin, Board, Admin, and the
+three module admins) — not Super-Admin-only anymore. Change Manager/Implementer/Requester (ranks 5-7)
+remain excluded. The rank-based `assertCanManage`/`assertCanGrant` guards described above are what
+actually restrict what each tier can do once inside (e.g. Board still can't touch a Super Admin) — the
+route-level permission just controls who can reach the screen at all.
 
 ### Module access is a *separate* system from rank
 

@@ -55,6 +55,15 @@ see `architecture.md`; for practical gotchas arising from these changes, see `KT
   role already had (a faithfulness pass, not an access expansion). Frontend route/tab visibility
   (`permissions.lib.js`) is a separate, not-yet-converted UX layer — the backend guards are the real
   boundary regardless of what the frontend shows.
+- **028** — Rebuilt `hot_desk_roles.permissions` to actually reflect each role's own description text
+  instead of the narrow access-preserving set from 027: granted `dashboard.export` to Admin and the
+  three module admins (matching their descriptions' "Export Reports" language), and granted
+  `settings.users.manage` to ranks 1-4 (Super Admin, Board, Admin, module admins), so they can reach
+  the Settings user-management screen — ranks 5-7 remain excluded. Split out a new
+  `settings.roles.view` (read-only role list) from `settings.roles.manage` (editing a role's own
+  permissions — stays Super-Admin-only). Frontend's `SettingsRoute` guard, sidebar visibility, and
+  `settings.page.jsx`'s internal gates switched from a hardcoded `isSuperAdmin` check to
+  `user.permissions.includes('settings.users.manage')`.
 
 ## Dead weight removed
 

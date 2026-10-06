@@ -71,13 +71,10 @@ Fox systems (see `employees`/`UserS8`'s origin in `architecture.md`).
 
 ## Open items (known, deliberately not done yet)
 
-- **Settings/"Manage Users" is Super-Admin-only at the route layer**, even though the rank-based
-  `assertCanManage`/`assertCanGrant` logic in `userManagement.service.js` is built to support Board/
-  Admin/Change Manager managing people below them. The hierarchy logic is real and correct but
-  currently unreachable by anyone except Super Admin. Opening the routes (and the frontend's
-  `SettingsRoute` guard + sidebar visibility) to more tiers, while deciding how far down the hierarchy
-  that access should go (down to Admin-tier? down to Change Manager/Implementer too?), is the natural
-  next step — see `architecture.md` §2.
+- ~~Settings/"Manage Users" is Super-Admin-only at the route layer~~ — **resolved.** Ranks 1-4 (Super
+  Admin, Board, Admin, module admins) now hold `settings.users.manage` and can reach the screen; ranks
+  5-7 (Change Manager/Implementer/Requester) cannot. The rank-based `assertCanManage`/`assertCanGrant`
+  guards restrict what each tier can actually do once inside — see `architecture.md` §2.
 - **`hot_desk_roles.permissions` is real on the backend now, not yet on the frontend** — see
   `architecture.md` §4. Every backend route guard checks it; `permissions.lib.js` and page-level
   `isXxx` checks on the frontend are still the old hardcoded role-ID layer (UX-only — the backend is
