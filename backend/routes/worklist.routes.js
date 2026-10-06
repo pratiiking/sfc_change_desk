@@ -5,10 +5,9 @@ import {
   handleWorklistAction,
   addChangeRequestComment
 } from '../controllers/worklist.controller.js';
-import { requireRole, requireOrganizationScopeRole } from '../middlewares/auth.middleware.js';
+import { requirePermission, requireOrganizationScopeRole } from '../middlewares/auth.middleware.js';
 import { validate } from '../middlewares/validate.middleware.js';
 import { worklistActionSchema } from '../validations/worklist.validation.js';
-import { ROLE } from '../config/constants.js';
 
 const router = express.Router();
 
@@ -17,9 +16,9 @@ const router = express.Router();
 // act on, so there's nothing to additionally restrict at the route level.
 router.get('/worklist/counts', getWorklistCounts);
 
-router.get('/worklist', requireRole(['Change Manager', 'Change Implementer', 'Admin', 'Super Admin', 'Change Desk Admin', ROLE.SUPER_ADMIN, ROLE.ADMIN_LEGACY, ROLE.CHANGE_ADMIN, ROLE.CHANGE_MANAGER, ROLE.CHANGE_IMPLEMENTER]), requireOrganizationScopeRole, getWorklist);
-router.get('/my-worklist', requireRole(['Change Manager', 'Change Implementer', 'Admin', 'Super Admin', 'Change Desk Admin', ROLE.SUPER_ADMIN, ROLE.ADMIN_LEGACY, ROLE.CHANGE_ADMIN, ROLE.CHANGE_MANAGER, ROLE.CHANGE_IMPLEMENTER]), requireOrganizationScopeRole, getWorklist);
-router.post('/worklist/action', requireRole(['Change Manager', 'Change Implementer', 'Admin', 'Super Admin', 'Change Desk Admin', ROLE.SUPER_ADMIN, ROLE.ADMIN_LEGACY, ROLE.CHANGE_ADMIN, ROLE.CHANGE_MANAGER, ROLE.CHANGE_IMPLEMENTER]), validate(worklistActionSchema), handleWorklistAction);
-router.post('/worklist/comment', requireRole(['Change Manager', 'Change Implementer', 'Admin', 'Super Admin', 'Change Desk Admin', ROLE.SUPER_ADMIN, ROLE.ADMIN_LEGACY, ROLE.CHANGE_ADMIN, ROLE.CHANGE_MANAGER, ROLE.CHANGE_IMPLEMENTER]), addChangeRequestComment);
+router.get('/worklist', requirePermission('changeRequest.worklist.view'), requireOrganizationScopeRole, getWorklist);
+router.get('/my-worklist', requirePermission('changeRequest.worklist.view'), requireOrganizationScopeRole, getWorklist);
+router.post('/worklist/action', requirePermission('changeRequest.worklist.view'), validate(worklistActionSchema), handleWorklistAction);
+router.post('/worklist/comment', requirePermission('changeRequest.worklist.view'), addChangeRequestComment);
 
 export default router;

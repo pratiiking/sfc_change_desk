@@ -76,6 +76,7 @@ export const publicUser = (identity) => {
     roleId: u.roleId || null,
     roles: u.roles || (u.role ? [u.role] : []),
     rolesList: u.rolesList || (u.roleId ? [u.roleId] : []),
+    permissions: u.permissions || [],
     isSuperAdmin: Boolean(u.isSuperAdmin || u.roleId === ROLE.SUPER_ADMIN || u.roleName === 'Super Admin' || u.role === 'Super Admin' || u.role === 'ChangeDesk Super Admin' || u.roleName === 'ChangeDesk Super Admin'),
     isChangeAdmin: Boolean(u.isChangeAdmin || (u.rolesList && (u.rolesList.includes(ROLE.SUPER_ADMIN) || u.rolesList.includes(ROLE.ADMIN_LEGACY) || u.rolesList.includes(ROLE.CHANGE_ADMIN)))),
     isPreSpendAdmin: Boolean(u.isPreSpendAdmin || (u.rolesList && (u.rolesList.includes(ROLE.SUPER_ADMIN) || u.rolesList.includes(ROLE.PRESPEND_ADMIN)))),

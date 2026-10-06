@@ -20,15 +20,15 @@ const hoursAgo = (n) => new Date(NOW - n * 3_600_000);
 
 // ---------- roles ------------------------------------------
 export const roles = [
-  { id: ROLE.SUPER_ADMIN, name: 'Super Admin', description: 'Ultimate system control across all modules, role & permission management, system audit, database & user management.', permissions: ['Full System Control', 'Manage Roles & Permissions', 'Manage Users', 'View System Audit Logs', 'Override Approvals'] },
-  { id: ROLE.CHANGE_ADMIN, name: 'Change Desk Admin', description: 'Change Desk system administration, category oversight, and change management workflows.', permissions: ['Manage Change Desk Users', 'Manage Change Categories', 'Export Reports', 'Change Desk Settings'] },
-  { id: ROLE.PRESPEND_ADMIN, name: 'Pre-Spend Admin', description: 'Pre-Spend system administration, budget approvals, and financial spend policies.', permissions: ['Manage Pre-Spend Users', 'Manage Budgets & Thresholds', 'Export Pre-Spend Reports'] },
-  { id: ROLE.TRAVEL_ADMIN, name: 'Travel Desk Admin', description: 'Travel Desk system administration, booking rules, vendor policies, and travel reports.', permissions: ['Manage Travel Users', 'Manage Travel Policies', 'Export Travel Reports'] },
-  { id: ROLE.ADMIN_LEGACY, name: 'Admin', description: 'System administration, user onboarding, and system reporting.', permissions: ['Manage Users', 'Export Reports', 'System Settings'] },
-  { id: ROLE.CHANGE_MANAGER, name: 'Change Manager', description: 'Full lifecycle oversight: review, approve, reject, or request information on change requests.', permissions: ['Approve / Reject CRs', 'Lifecycle Oversight', 'Request Info (Send Back)', 'View Worklist & Metrics'] },
-  { id: ROLE.REQUESTER, name: 'Requester', description: 'Standard employee permission to raise change requests, track progress, and update own draft submissions.', permissions: ['Create change requests', 'View own requests', 'Save draft CRs'] },
-  { id: ROLE.CHANGE_IMPLEMENTER, name: 'Change Implementer', description: 'Implementation oversight: mark approved change requests as implemented within assigned categories.', permissions: ['Implement Approved CRs', 'View Worklist & Metrics'] },
-  { id: ROLE.BOARD, name: 'Board', description: 'Board member governance, expedited approval authority, and executive oversight.', permissions: ['Board Approvals', 'View System Reports', 'View Organization Dashboard'] }
+  { id: ROLE.SUPER_ADMIN, name: 'Super Admin', rank: 1, description: 'Ultimate system control across all modules, role & permission management, system audit, database & user management.', permissions: ['catalog.subcategory.manage', 'dashboard.export', 'dashboard.org.view', 'settings.users.manage', 'settings.roles.manage', 'settings.auditLogs.view', 'changeRequest.worklist.view', 'preSpend.worklist.view', 'travel.worklist.view'] },
+  { id: ROLE.BOARD, name: 'Board', rank: 2, description: 'Board member governance, expedited approval authority, and executive oversight.', permissions: ['dashboard.export', 'dashboard.org.view', 'preSpend.worklist.view', 'travel.worklist.view'] },
+  { id: ROLE.ADMIN_LEGACY, name: 'Admin', rank: 3, description: 'System administration, user onboarding, and system reporting.', permissions: ['changeRequest.worklist.view', 'preSpend.worklist.view', 'travel.worklist.view'] },
+  { id: ROLE.CHANGE_ADMIN, name: 'Change Desk Admin', rank: 4, description: 'Change Desk system administration, category oversight, and change management workflows.', permissions: ['changeRequest.worklist.view'] },
+  { id: ROLE.PRESPEND_ADMIN, name: 'Pre-Spend Admin', rank: 4, description: 'Pre-Spend system administration, budget approvals, and financial spend policies.', permissions: ['preSpend.worklist.view'] },
+  { id: ROLE.TRAVEL_ADMIN, name: 'Travel Desk Admin', rank: 4, description: 'Travel Desk system administration, booking rules, vendor policies, and travel reports.', permissions: ['travel.worklist.view'] },
+  { id: ROLE.CHANGE_MANAGER, name: 'Change Manager', rank: 5, description: 'Full lifecycle oversight: review, approve, reject, or request information on change requests.', permissions: ['changeRequest.worklist.view'] },
+  { id: ROLE.CHANGE_IMPLEMENTER, name: 'Change Implementer', rank: 6, description: 'Implementation oversight: mark approved change requests as implemented within assigned categories.', permissions: ['changeRequest.worklist.view'] },
+  { id: ROLE.REQUESTER, name: 'Requester', rank: 7, description: 'Standard employee permission to raise change requests, track progress, and update own draft submissions.', permissions: [] }
 ];
 
 // ---------- users (Empty for production) --------------------

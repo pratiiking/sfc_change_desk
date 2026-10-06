@@ -1,7 +1,6 @@
 import express from 'express';
 import { asyncHandler } from '../utils/asyncHandler.js';
-import { requireOrganizationScopeRole, requireWorklistViewRole } from '../middlewares/auth.middleware.js';
-import { ROLE } from '../config/constants.js';
+import { requireOrganizationScopeRole, requireWorklistViewPermission } from '../middlewares/auth.middleware.js';
 import {
   createPreSpendService,
   getPreSpendRequestsService,
@@ -19,7 +18,7 @@ router.get('/past-vendor', asyncHandler(async (req, res) => {
 
 router.get(
   '/',
-  requireWorklistViewRole(['Admin', 'Super Admin', 'PreSpend Admin', ROLE.SUPER_ADMIN, ROLE.ADMIN_LEGACY, ROLE.PRESPEND_ADMIN, 'role-board', ROLE.BOARD, 'Board Member', 'Board']),
+  requireWorklistViewPermission('preSpend.worklist.view'),
   requireOrganizationScopeRole,
   asyncHandler(async (req, res) => {
     const isWorklist = req.query.view === 'worklist';

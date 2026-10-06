@@ -1,5 +1,5 @@
 import { UserS8 } from '../models/UserS8.js';
-import { ChangeManagerCategory, ChangeImplementerCategory } from '../models/index.js';
+import { ChangeManagerCategory, ChangeImplementerCategory, Role } from '../models/index.js';
 import { Op } from 'sequelize';
 import { sequelize } from '../config/database.js';
 
@@ -104,6 +104,7 @@ export class IdentityResolver {
         isBoardUser: false,
         roles: [{ roleId: 'role-employee', roleName: 'Employee' }],
         rolesList: ['role-employee'],
+        permissions: [],
         cmCategories: [],
         ciCategories: [],
         employeeBusinessId: employee.empId || `EMP-${employee.id}`,
@@ -209,6 +210,9 @@ export class IdentityResolver {
     });
     const ciCategories = ciAssignments.map(a => a.categoryId);
 
+    const roleRow = await Role.findByPk(roleId, { attributes: ['permissions'] });
+    const permissions = Array.isArray(roleRow?.permissions) ? roleRow.permissions : [];
+
     const rolesList = [{ roleId, roleName }];
     const assignedRoleIds = [roleId];
 
@@ -226,6 +230,7 @@ export class IdentityResolver {
       role: roleName,
       roles: rolesList,
       rolesList: assignedRoleIds,
+      permissions,
       isSuperAdmin: assignedRoleIds.includes(ROLE.SUPER_ADMIN),
       isChangeAdmin: assignedRoleIds.includes(ROLE.SUPER_ADMIN) || assignedRoleIds.includes(ROLE.ADMIN_LEGACY) || assignedRoleIds.includes(ROLE.CHANGE_ADMIN),
       isPreSpendAdmin: assignedRoleIds.includes(ROLE.SUPER_ADMIN) || assignedRoleIds.includes(ROLE.PRESPEND_ADMIN),

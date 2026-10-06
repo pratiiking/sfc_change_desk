@@ -1,7 +1,6 @@
 import jwt from 'jsonwebtoken';
 import { verifyToken, publicUser } from '../services/auth.service.js';
 import { IdentityResolver } from '../services/identityResolver.service.js';
-import { ROLE } from '../config/constants.js';
 
 if (!process.env.JWT_SECRET) {
   throw new Error('JWT_SECRET environment variable is required and not set.');
@@ -38,48 +37,42 @@ export const authenticateUser = async (req, res, next) => {
 export const requireAuth = authenticateUser;
 
 /**
- * Enforces role authorization (Super Admin always bypasses)
+ * Enforces that the authenticated user's role carries the given permission key
+ * (hot_desk_roles.permissions, resolved onto req.user.permissions by
+ * IdentityResolver). Super Admin always bypasses, same as before this was
+ * permission-driven.
  */
-export const requireRole = (allowedRoles = []) => {
-  const rolesList = Array.isArray(allowedRoles) ? allowedRoles : [allowedRoles];
-
+export const requirePermission = (requiredPermission) => {
   return (req, res, next) => {
-    const userRole = req.user?.role || '';
-    const userRoleId = req.user?.roleId || '';
-    const appRole = req.user?.applicationRole || '';
+    const userPermissions = req.user?.permissions || [];
 
-    if (
-      userRole === 'Super Admin' ||
-      userRoleId === ROLE.SUPER_ADMIN ||
-      appRole === 'SUPER_ADMIN' ||
-      rolesList.includes(userRole) ||
-      rolesList.includes(userRoleId) ||
-      rolesList.includes(appRole)
-    ) {
+    if (req.user?.isSuperAdmin || userPermissions.includes(requiredPermission)) {
       return next();
     }
 
     return res.status(403).json({
       success: false,
-      message: `Access denied. Role "${userRole}" lacks permissions for this action. Required: [${rolesList.join(', ')}]`
+      message: `Access denied. Missing required permission: "${requiredPermission}".`
     });
   };
 };
 
 /**
- * Restricts organization-scoped queries to Super Admin and Board Members
+ * Restricts organization-scoped queries (?scope=organization|org) to whoever
+ * holds the dashboard.org.view permission (Super Admin, Board).
  */
 export const requireOrganizationScopeRole = (req, res, next) => {
   const scope = String(req.query.scope || '').toLowerCase();
   if (scope !== 'organization' && scope !== 'org') return next();
-  return requireRole(['Super Admin', ROLE.SUPER_ADMIN, 'role-board', ROLE.BOARD, 'Board Member', 'Board'])(req, res, next);
+  return requirePermission('dashboard.org.view')(req, res, next);
 };
 
 /**
- * Restricts ?view=worklist queries (the approver inbox, which surfaces every other
- * user's requests) to the roles allowed to approve that domain
+ * Restricts ?view=worklist queries (the approver inbox, which surfaces every
+ * other user's requests) to whoever holds the given module's worklist
+ * permission.
  */
-export const requireWorklistViewRole = (allowedRoles = []) => (req, res, next) => {
+export const requireWorklistViewPermission = (permission) => (req, res, next) => {
   if (req.query.view !== 'worklist') return next();
-  return requireRole(allowedRoles)(req, res, next);
+  return requirePermission(permission)(req, res, next);
 };
