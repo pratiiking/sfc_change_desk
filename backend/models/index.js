@@ -95,12 +95,8 @@ import { CatalogSubcategory } from './CatalogSubcategory.js';
 import { CatalogSubcategoryField } from './CatalogSubcategoryField.js';
 import { Employee } from './Employee.js';
 import { UserS8 } from './UserS8.js';
-import { UserAppRole } from './UserAppRole.js';
 
-export { ChangeRequestApproval, CatalogCategory, CatalogSubcategory, CatalogSubcategoryField, Employee, UserS8, UserAppRole };
-
-Role.hasMany(UserAppRole, { foreignKey: 'roleId', as: 'appUserRoles' });
-UserAppRole.belongsTo(Role, { foreignKey: 'roleId', as: 'role' });
+export { ChangeRequestApproval, CatalogCategory, CatalogSubcategory, CatalogSubcategoryField, Employee, UserS8 };
 
 ChangeRequestApproval.belongsTo(ChangeRequest, { foreignKey: 'changeRequestId', onDelete: 'CASCADE', onUpdate: 'CASCADE' });
 ChangeRequest.hasMany(ChangeRequestApproval, { as: 'approvals', foreignKey: 'changeRequestId' });
@@ -169,7 +165,6 @@ export const models = {
   ChangeImplementerCategory,
   Employee,
   UserS8,
-  UserAppRole,
   PreSpendRequest,
   TravelRequest,
   NotificationJob

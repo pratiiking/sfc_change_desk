@@ -11,7 +11,7 @@ import {
   ChangeImplementerCategory
 } from '../models/index.js';
 import { Employee } from '../models/Employee.js';
-import { UserAppRole } from '../models/UserAppRole.js';
+import { UserS8 } from '../models/UserS8.js';
 import { IdentityResolver } from './identityResolver.service.js';
 import { checkUserInUserTable } from './auth.service.js';
 import { isRestrictedAction, ROLE } from '../config/constants.js';
@@ -509,11 +509,12 @@ const nextChangeRequestId = async (tx) => {
 };
 
 export async function getVotersForCategory(categoryId, tx) {
-  const adminRoles = await UserAppRole.findAll({
+  const adminUsers = await UserS8.findAll({
     where: { roleId: { [Op.in]: [ROLE.SUPER_ADMIN, ROLE.ADMIN_LEGACY, ROLE.CHANGE_ADMIN] } },
+    attributes: ['id'],
     transaction: tx
   });
-  const adminKeys = adminRoles.map((r) => r.userKey);
+  const adminKeys = adminUsers.map((u) => String(u.id));
 
   let cmKeys = [];
   if (categoryId) {
@@ -523,14 +524,15 @@ export async function getVotersForCategory(categoryId, tx) {
     });
     const cmUserIds = cmAssignments.map((a) => a.userId);
     if (cmUserIds.length > 0) {
-      const cmRoles = await UserAppRole.findAll({
+      const cmUsers = await UserS8.findAll({
         where: {
-          userKey: { [Op.in]: cmUserIds },
+          id: { [Op.in]: cmUserIds },
           roleId: ROLE.CHANGE_MANAGER
         },
+        attributes: ['id'],
         transaction: tx
       });
-      cmKeys = cmRoles.map((r) => r.userKey);
+      cmKeys = cmUsers.map((u) => String(u.id));
     }
   }
 
