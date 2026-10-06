@@ -1,6 +1,6 @@
 import express from 'express';
 import jwt from 'jsonwebtoken';
-import { ChangeRequest, ChangeRequestApproval } from '../models/index.js';
+import { ChangeRequest, ChangeRequestApproval, Employee } from '../models/index.js';
 import { PreSpendRequest } from '../models/PreSpendRequest.js';
 import { TravelRequest } from '../models/TravelRequest.js';
 import { serializeChangeRequest } from '../utils/serializers.js';
@@ -14,8 +14,12 @@ import { IdentityResolver } from '../services/identityResolver.service.js';
 import { APPROVAL_STAGE, isManagerReviewStage } from '../config/approvalWorkflow.js';
 import { publicActionRateLimiter } from '../middlewares/rateLimit.middleware.js';
 
+// employeeRecord/managerRecord back ChangeRequest's virtual
+// employeeName/employeeEmail/managerName/managerEmail getters.
 const CR_INCLUDE = [
-  { model: ChangeRequestApproval, as: 'approvals' }
+  { model: ChangeRequestApproval, as: 'approvals' },
+  { model: Employee, as: 'employeeRecord' },
+  { model: Employee, as: 'managerRecord' }
 ];
 
 const router = express.Router();

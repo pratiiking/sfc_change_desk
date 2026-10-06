@@ -32,9 +32,13 @@ import {
   serializeWorklistEntry
 } from '../utils/serializers.js';
 
-// Includes reused across change-request queries.
+// Includes reused across change-request queries. employeeRecord/managerRecord
+// back the model's virtual employeeName/employeeEmail/managerName/managerEmail
+// getters -- any fetch that needs those must include these two.
 const CR_INCLUDE = [
-  { model: ChangeRequestApproval, as: 'approvals' }
+  { model: ChangeRequestApproval, as: 'approvals' },
+  { model: Employee, as: 'employeeRecord' },
+  { model: Employee, as: 'managerRecord' }
 ];
 
 export const getChangeRequestsService = async () => {
@@ -442,9 +446,15 @@ export const getFilteredChangeRequests = async ({
   if (isWorklist && actingUserId) {
     const allWorklistRows = await ChangeRequest.findAll({
       where: baseWhere,
-      attributes: ['id', 'status', 'approvalStage', 'category', 'requesterId', 'employeeId', 'managerEmail'],
+      attributes: ['id', 'status', 'approvalStage', 'category', 'requesterId', 'employeeId', 'managerId'],
       raw: true
     });
+
+    const uniqueManagerIds = [...new Set(allWorklistRows.map(r => r.managerId).filter(Boolean))];
+    const managerRecords = uniqueManagerIds.length > 0
+      ? await Employee.findAll({ where: { empId: { [Op.in]: uniqueManagerIds } }, attributes: ['empId', 'email'], raw: true })
+      : [];
+    const managerEmailByManagerId = new Map(managerRecords.map(m => [m.empId, m.email]));
 
     const allRowIds = allWorklistRows.map(r => r.id);
     const userAllApprovals = await ChangeRequestApproval.findAll({
@@ -466,7 +476,7 @@ export const getFilteredChangeRequests = async ({
 
       const isStage1 = isManagerReviewStage(cr.approvalStage);
       const isStage2 = isStage2ReviewStage(cr.approvalStage, cr.status, 'Pending');
-      const crManagerEmail = (cr.managerEmail || '').toLowerCase().trim();
+      const crManagerEmail = (managerEmailByManagerId.get(cr.managerId) || '').toLowerCase().trim();
       const isAssignedReportingManager = Boolean(actingUserEmail && crManagerEmail && actingUserEmail === crManagerEmail);
 
       const canAct = !isSelfRequest && (
@@ -565,7 +575,7 @@ const identityOwnsRequest = async (actorId, requesterId) => {
 };
 
 export const updateDraftChangeRequestService = async (id, actorId, payload = {}) => {
-  const cr = await ChangeRequest.findByPk(id);
+  const cr = await ChangeRequest.findByPk(id, { include: CR_INCLUDE });
   if (!cr) {
     const err = new Error(`Change Request ${id} not found`);
     err.statusCode = 404;
@@ -633,7 +643,27 @@ export const updateDraftChangeRequestService = async (id, actorId, payload = {})
   } else if (payload.location && !payload.location.includes('Auto-fetched')) {
     cr.location = payload.location;
   }
-  if (payload.managerEmail !== undefined) cr.managerEmail = payload.managerEmail;
+  if (payload.managerEmail !== undefined) {
+    const managerEmailInput = payload.managerEmail ? String(payload.managerEmail).trim() : '';
+    if (managerEmailInput) {
+      const mgrEmp = await Employee.findOne({
+        where: sequelize.where(sequelize.fn('LOWER', sequelize.col('email')), managerEmailInput.toLowerCase())
+      });
+      if (!mgrEmp) {
+        const err = new Error(`Selected manager "${managerEmailInput}" is not found in the employee directory.`);
+        err.statusCode = 400;
+        throw err;
+      }
+      if (mgrEmp.leftAt || mgrEmp.leftReason || mgrEmp.leftBy) {
+        const err = new Error(`Selected manager "${managerEmailInput}" is inactive/exited.`);
+        err.statusCode = 400;
+        throw err;
+      }
+      cr.managerId = mgrEmp.empId;
+    } else {
+      cr.managerId = null;
+    }
+  }
   if (payload.customFieldValues) cr.customFieldValues = payload.customFieldValues;
   if (workflowId) cr.workflowId = workflowId;
 
@@ -791,11 +821,11 @@ export const createChangeRequestService = async (payload = {}) => {
     }
   }
 
-  const mergedCustomFields = {
-    ...(payload.customFieldValues || {}),
-    employeeName: payload.customFieldValues?.employeeName || requesterUser?.displayName || payload.employeeName || '',
-    employeeEmail: payload.customFieldValues?.employeeEmail || requesterEmail
-  };
+  // employeeName/employeeEmail/managerName/managerEmail are never taken from the
+  // client (payload/customFieldValues) -- they're always derived server-side via
+  // employeeId/managerId joined to the employees table, so a requester can't
+  // submit an identity other than their own authenticated one.
+  const mergedCustomFields = { ...(payload.customFieldValues || {}) };
 
   let authoritativeLocation = '';
   let authoritativeEmpBusinessId = '';
@@ -834,25 +864,24 @@ export const createChangeRequestService = async (payload = {}) => {
       : ''
   );
 
-  let validManagerName = null;
-  let validManagerEmail = payload.managerEmail ? String(payload.managerEmail).trim() : '';
+  let validManagerId = null;
+  const managerEmailInput = payload.managerEmail ? String(payload.managerEmail).trim() : '';
 
-  if (validManagerEmail) {
+  if (managerEmailInput) {
     const mgrEmp = await Employee.findOne({
-      where: sequelize.where(sequelize.fn('LOWER', sequelize.col('email')), validManagerEmail.toLowerCase())
+      where: sequelize.where(sequelize.fn('LOWER', sequelize.col('email')), managerEmailInput.toLowerCase())
     });
     if (!mgrEmp) {
-      const err = new Error(`Selected manager "${validManagerEmail}" is not found in the employee directory.`);
+      const err = new Error(`Selected manager "${managerEmailInput}" is not found in the employee directory.`);
       err.statusCode = 400;
       throw err;
     }
     if (mgrEmp.leftAt || mgrEmp.leftReason || mgrEmp.leftBy) {
-      const err = new Error(`Selected manager "${validManagerEmail}" is inactive/exited.`);
+      const err = new Error(`Selected manager "${managerEmailInput}" is inactive/exited.`);
       err.statusCode = 400;
       throw err;
     }
-    validManagerName = mgrEmp.name || null;
-    validManagerEmail = mgrEmp.email || validManagerEmail;
+    validManagerId = mgrEmp.empId;
   }
 
   const createdCR = await ChangeRequest.create({
@@ -862,10 +891,7 @@ export const createChangeRequestService = async (payload = {}) => {
     subCategory: subCategoryName,
     subcategoryId: payload.subcategoryId || null,
     employeeId: empIdToStore,
-    employeeName: mergedCustomFields.employeeName || null,
-    employeeEmail: mergedCustomFields.employeeEmail || requesterEmail || null,
-    managerName: validManagerName,
-    managerEmail: validManagerEmail,
+    managerId: validManagerId,
     location: authoritativeLocation || (payload.location && !payload.location.includes('Auto-fetched') && !payload.location.includes('Not specified') ? payload.location : null),
     justification: payload.justification || '',
     startDate: payload.startDate || null,
@@ -892,13 +918,13 @@ export const createChangeRequestService = async (payload = {}) => {
   const serialized = serializeChangeRequest(created);
 
   // Enqueue initial Stage 1 Manager Invitation
-  if (validManagerEmail) {
+  if (serialized.managerEmail) {
     enqueueNotification({
       module: 'cr',
       requestId: created.id,
       approvalCycle: created.approvalCycle,
       jobType: 'manager_invitation',
-      recipientEmail: validManagerEmail
+      recipientEmail: serialized.managerEmail
     }).catch((err) => console.error('[mail] Queue manager invite failed:', err.message));
   }
 
@@ -920,7 +946,7 @@ export const getWorklistService = async (actingUserId = null, page = 1, limit = 
 
 export const applyWorklistActionService = async ({ id, action, rejectionReason = '', comment = '', actorId = null } = {}) => {
   const actionComment = comment || rejectionReason || '';
-  const targetCR = await ChangeRequest.findByPk(id);
+  const targetCR = await ChangeRequest.findByPk(id, { include: CR_INCLUDE });
   if (!targetCR) {
     const err = new Error(`Change Request ${id} not found.`);
     err.statusCode = 404;

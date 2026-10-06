@@ -24,8 +24,7 @@ export const ChangeRequest = sequelize.define(
     category: { type: DataTypes.STRING, allowNull: false },
     subCategory: { type: DataTypes.STRING, defaultValue: '' },
     employeeId: { type: DataTypes.STRING, defaultValue: '' },
-    managerName: { type: DataTypes.STRING, allowNull: true, field: 'manager_name' },
-    managerEmail: { type: DataTypes.STRING, defaultValue: '' },
+    managerId: { type: DataTypes.STRING, allowNull: true, field: 'manager_id' },
     location: { type: DataTypes.STRING, allowNull: true, defaultValue: null },
     justification: { type: DataTypes.TEXT, defaultValue: '' },
     startDate: { type: DataTypes.STRING, allowNull: true },
@@ -51,8 +50,26 @@ export const ChangeRequest = sequelize.define(
     requesterId: { type: DataTypes.STRING, allowNull: false },
     approverId: { type: DataTypes.STRING, allowNull: true },
     subcategoryId: { type: DataTypes.STRING, allowNull: true },
-    employeeName: { type: DataTypes.STRING, allowNull: true },
-    employeeEmail: { type: DataTypes.STRING, allowNull: true },
+    // employeeName/employeeEmail/managerName/managerEmail are intentionally NOT
+    // real columns: they're derived below from employeeId/managerId via the
+    // employeeRecord/managerRecord associations, so display data can never
+    // drift from (or be spoofed independently of) the employees table.
+    employeeName: {
+      type: DataTypes.VIRTUAL,
+      get() { return this.employeeRecord?.name ?? null; }
+    },
+    employeeEmail: {
+      type: DataTypes.VIRTUAL,
+      get() { return this.employeeRecord?.email ?? null; }
+    },
+    managerName: {
+      type: DataTypes.VIRTUAL,
+      get() { return this.managerRecord?.name ?? null; }
+    },
+    managerEmail: {
+      type: DataTypes.VIRTUAL,
+      get() { return this.managerRecord?.email ?? null; }
+    },
     rejectionReason: { type: DataTypes.TEXT, allowNull: true },
     customFieldValues: { type: DataTypes.JSONB, allowNull: true, defaultValue: {} }
   },
@@ -100,6 +117,9 @@ export { ChangeRequestApproval, CatalogCategory, CatalogSubcategory, CatalogSubc
 
 ChangeRequestApproval.belongsTo(ChangeRequest, { foreignKey: 'changeRequestId', onDelete: 'CASCADE', onUpdate: 'CASCADE' });
 ChangeRequest.hasMany(ChangeRequestApproval, { as: 'approvals', foreignKey: 'changeRequestId' });
+
+ChangeRequest.belongsTo(Employee, { foreignKey: 'employeeId', targetKey: 'empId', as: 'employeeRecord' });
+ChangeRequest.belongsTo(Employee, { foreignKey: 'managerId', targetKey: 'empId', as: 'managerRecord' });
 
 CatalogCategory.hasMany(CatalogSubcategory, { as: 'subcategories', foreignKey: 'categoryId' });
 CatalogSubcategory.belongsTo(CatalogCategory, { as: 'category', foreignKey: 'categoryId' });
