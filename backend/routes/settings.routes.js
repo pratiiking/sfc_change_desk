@@ -18,7 +18,7 @@ import { requirePermission } from '../middlewares/auth.middleware.js';
 const router = express.Router();
 
 router.get('/settings/users', requirePermission('settings.users.manage'), getSettingsUsers);
-router.post('/settings/users', requirePermission('settings.users.manage'), createSettingsUser);
+router.post('/settings/users', requirePermission('settings.users.invite'), createSettingsUser);
 router.patch('/settings/users/:id', requirePermission('settings.users.manage'), updateSettingsUser);
 router.delete('/settings/users/:id', requirePermission('settings.users.manage'), deleteSettingsUser);
 router.get('/settings/roles', requirePermission('settings.roles.view'), getSettingsRoles);

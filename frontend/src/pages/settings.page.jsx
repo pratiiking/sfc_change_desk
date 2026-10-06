@@ -30,6 +30,8 @@ function SettingsPage({ user }) {
   const isSuperAdmin = user?.roleId === ROLE.SUPER_ADMIN || (user?.role || '').toLowerCase() === 'super admin';
   const isRequester = !isSuperAdmin && (user?.roleId === ROLE.REQUESTER || user?.role === 'Requester');
   const canManageUsers = Array.isArray(user?.permissions) && user.permissions.includes('settings.users.manage');
+  const canInviteUsers = Array.isArray(user?.permissions) && user.permissions.includes('settings.users.invite');
+  const canViewAuditLogs = Array.isArray(user?.permissions) && user.permissions.includes('settings.auditLogs.view');
 
   const [isSavingUser, setIsSavingUser] = useState(false);
   const [isLoadingCategories, setIsLoadingCategories] = useState(false);
@@ -38,12 +40,14 @@ function SettingsPage({ user }) {
 
   const [activeTab, setActiveTab] = useState(() => {
     const hash = (window.location.hash || '').replace('#', '').toLowerCase();
+    if (hash === 'audit' && !canViewAuditLogs) return 'users';
     return ['users', 'audit'].includes(hash) ? hash : 'users';
   });
 
   useEffect(() => {
     const handleHashChange = () => {
       const hash = (window.location.hash || '').replace('#', '').toLowerCase();
+      if (hash === 'audit' && !canViewAuditLogs) return;
       if (['users', 'audit'].includes(hash)) {
         setActiveTab(hash);
       }
@@ -127,7 +131,7 @@ function SettingsPage({ user }) {
 
   const { data: auditLogsData, isLoading: isLoadingAuditLogs } = useQuery({
     queryKey: ['settings-audit-logs', auditFilter, auditPage, auditPageSize],
-    enabled: activeTab === 'audit',
+    enabled: activeTab === 'audit' && canViewAuditLogs,
     queryFn: async () => {
       const params = new URLSearchParams({ page: auditPage, limit: auditPageSize });
       if (auditFilter && auditFilter !== 'All activity') params.set('filter', auditFilter);
@@ -485,7 +489,7 @@ function SettingsPage({ user }) {
         </div>
 
         {/* Right Header Actions */}
-        {canManageUsers && activeTab === 'users' && (
+        {canInviteUsers && activeTab === 'users' && (
           <button
             onClick={() => setIsInviteModalOpen(true)}
             className="inline-flex cursor-pointer items-center gap-[0.4rem] rounded-lg border-0 bg-primary px-[1.1rem] py-[0.55rem] text-[0.85rem] font-medium text-[#FFFFFF] shadow-[0_1px_3px_rgba(0,0,0,0.2)]"
@@ -508,7 +512,7 @@ function SettingsPage({ user }) {
       <div className="flex flex-wrap gap-2 border-b border-border pb-2">
         {[
           { id: 'users', label: 'Users' },
-          { id: 'audit', label: 'Audit Logs' }
+          ...(canViewAuditLogs ? [{ id: 'audit', label: 'Audit Logs' }] : [])
         ].map(tab => {
           const isActive = activeTab === tab.id;
           return (
