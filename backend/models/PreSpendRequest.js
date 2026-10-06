@@ -50,10 +50,6 @@ export const PreSpendRequest = sequelize.define(
       allowNull: false,
       field: 'item_description'
     },
-    location: {
-      type: DataTypes.STRING(150),
-      allowNull: true
-    },
     estimatedAmount: {
       type: DataTypes.DECIMAL(14, 2),
       allowNull: true,

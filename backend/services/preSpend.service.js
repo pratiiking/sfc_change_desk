@@ -107,7 +107,6 @@ export const createPreSpendService = async (data, user) => {
     category: data.category || 'General',
     subcategory: data.subcategory || '',
     itemDescription: data.buying || data.itemDescription || '',
-    location: data.location || '',
     estimatedAmount: Number(data.amount || data.estimatedAmount || data.vendors?.[0]?.amount || 0),
     neededByDate: data.neededBy || data.neededByDate || null,
     costCentre: data.costCentre || '',
