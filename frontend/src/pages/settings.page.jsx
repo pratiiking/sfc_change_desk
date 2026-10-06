@@ -100,6 +100,18 @@ function SettingsPage({ user }) {
   });
   const categories = categoriesData || defaultCategoriesList;
 
+  const { data: rolesData } = useQuery({
+    queryKey: ['settings-roles'],
+    enabled: activeTab === 'users',
+    queryFn: async () => {
+      const res = await apiFetch('/settings/roles');
+      if (!res.ok) return null;
+      const body = await res.json();
+      return body.data && Array.isArray(body.data) ? body.data : null;
+    }
+  });
+  const roles = rolesData || [];
+
   const { data: usersData, isLoading: isLoadingUsers } = useQuery({
     queryKey: ['settings-users'],
     enabled: activeTab === 'users',
@@ -131,6 +143,7 @@ function SettingsPage({ user }) {
   const auditLogsTotal = auditLogsData?.total || 0;
   const ROLE_TO_ID = {
     'Super Admin': ROLE.SUPER_ADMIN,
+    'Admin': ROLE.ADMIN_LEGACY,
     'Change Desk Admin': ROLE.CHANGE_ADMIN,
     'Pre-Spend Admin': ROLE.PRESPEND_ADMIN,
     'Travel Desk Admin': ROLE.TRAVEL_ADMIN,
@@ -140,6 +153,7 @@ function SettingsPage({ user }) {
   };
 
   const ALL_ASSIGNABLE_ROLES = [
+    'Admin',
     'Change Desk Admin',
     'Pre-Spend Admin',
     'Travel Desk Admin',
@@ -148,6 +162,16 @@ function SettingsPage({ user }) {
     'Board Member',
     'Super Admin'
   ];
+
+  // Lower rank = higher authority (hot_desk_roles.rank). A user can only ever
+  // be assigned a role strictly below their own rank — never their own level
+  // or above, so those options are hidden from the dropdown entirely.
+  const roleRankById = new Map(roles.map(r => [r.id, r.rank]));
+  const actorRank = roleRankById.get(user?.roleId) ?? -Infinity;
+  const ASSIGNABLE_ROLES = ALL_ASSIGNABLE_ROLES.filter((name) => {
+    const rank = roleRankById.get(ROLE_TO_ID[name]);
+    return rank !== undefined && rank > actorRank;
+  });
 
   const handleOpenManageUser = async (targetUser) => {
     if (isRequester) return;
@@ -730,7 +754,7 @@ function SettingsPage({ user }) {
                     className="flex-1 rounded-lg border border-border bg-input px-[0.85rem] py-[0.65rem] text-[0.85rem] text-foreground outline-none"
                   >
                     <option value="" disabled>Select a role</option>
-                    {ALL_ASSIGNABLE_ROLES.map(r => (
+                    {ASSIGNABLE_ROLES.map(r => (
                       <option key={r} value={r} disabled={newUser.roles?.includes(r)}>{r}</option>
                     ))}
                   </select>
@@ -945,7 +969,7 @@ function SettingsPage({ user }) {
                     className="flex-1 rounded-lg border border-border bg-input px-[0.85rem] py-[0.65rem] text-[0.85rem] text-foreground outline-none"
                   >
                     <option value="" disabled>Select a role</option>
-                    {ALL_ASSIGNABLE_ROLES.map(r => (
+                    {ASSIGNABLE_ROLES.map(r => (
                       <option key={r} value={r} disabled={editingUser.roles?.includes(r)}>{r}</option>
                     ))}
                   </select>

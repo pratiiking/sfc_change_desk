@@ -579,6 +579,7 @@ export const getSettingsRolesService = async () => {
     return {
       id: plainRole.id,
       name: plainRole.name,
+      rank: plainRole.rank,
       usersCount: counts[plainRole.id] || 0,
       description: plainRole.description,
       permissions: plainRole.permissions
