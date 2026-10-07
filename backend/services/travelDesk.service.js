@@ -19,6 +19,32 @@ export const generateTravelCode = async (_tx = null) => {
   return await getNextRequestCode('TR', _tx);
 };
 
+// Every one of these keys (camelCase or the raw form-label variant) is
+// already extracted onto a real column below -- storing them again inside
+// bookingDetails duplicated the exact same value in two places. Only the
+// genuinely mode-specific extras (airline preference, department/cost
+// centre, cab type, multi-city legs, etc.) belong in the JSONB blob.
+const BOOKING_DETAILS_REDUNDANT_KEYS = [
+  'travelMode', 'category',
+  'purpose', 'Purpose of visit',
+  'tripType', 'Trip type', 'Journey type',
+  'travelClass', 'Travel class', 'Bus type', 'Room type',
+  'fromLocation', 'From', 'From station', 'Pickup location',
+  'toLocation', 'To', 'To station', 'Final drop location', 'City / Location',
+  'departureDate', 'Date of travel', 'Date of journey', 'Check-in date',
+  'returnDate', 'Return / onward date', 'Return date', 'Check-out date',
+  'preferredTimeSlot', 'Preferred departure time', 'Preferred time slot', 'Pickup time',
+  'managerEmail', 'Manager',
+  'certified', 'policyCertified', 'isShortNotice'
+];
+
+const stripRedundantBookingDetails = (raw) => {
+  if (!raw || typeof raw !== 'object') return {};
+  const cleaned = { ...raw };
+  for (const key of BOOKING_DETAILS_REDUNDANT_KEYS) delete cleaned[key];
+  return cleaned;
+};
+
 // The single place that answers "which employees.emp_id is this email?" --
 // used everywhere we need to know who the currently acting person is in
 // employee-directory terms, since there is no stored requesterId/login-
@@ -120,7 +146,7 @@ export const createTravelService = async (data, user) => {
     returnDate: data.returnDate || data['Return / onward date'] || data['Return date'] || data['Check-out date'] || null,
     preferredTimeSlot: data.preferredTimeSlot || data['Preferred departure time'] || data['Preferred time slot'] || data['Pickup time'] || '',
     isShortNotice,
-    bookingDetails: data.bookingDetails || data.drafts || data,
+    bookingDetails: stripRedundantBookingDetails(data.bookingDetails || data.drafts || data),
     policyCertified: Boolean(data.certified || data.policyCertified),
     ...initialApprovalState(),
     status: 'Pending Approval'
@@ -287,7 +313,9 @@ export const getTravelRequestsService = async ({ user, userId, isWorklist = fals
       requestCode: r.requestCode,
       travellerName: r.travellerName,
       travellerEmail: r.travellerEmail,
-      department: r.department,
+      // There is no dedicated department column -- it's one of the
+      // mode-specific extras that only ever lived inside bookingDetails.
+      department: r.bookingDetails?.['Department / Cost Centre'] || r.bookingDetails?.department || null,
       travelMode: r.travelMode,
       category: r.travelMode,
       title: `${r.travelMode}: ${r.fromLocation || ''} → ${r.toLocation || ''}`,
