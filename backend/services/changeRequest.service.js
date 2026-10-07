@@ -100,13 +100,6 @@ export const getFilteredChangeRequests = async ({
       const isChangeManager = rolesList.includes(ROLE.CHANGE_MANAGER) || Boolean(identity?.isChangeManager) || (identity?.cmCategories && identity.cmCategories.length > 0);
       const isChangeImplementer = rolesList.includes(ROLE.CHANGE_IMPLEMENTER) || Boolean(identity?.isChangeImplementer) || (identity?.ciCategories && identity.ciCategories.length > 0);
 
-      // Rule: No user sees their own requests in My Worklist
-      if (!organizationScope) {
-        if (identity?.employeeBusinessId) {
-          andClauses.push({ employeeId: { [Op.ne]: identity.employeeBusinessId } });
-        }
-      }
-
       // Rule: In My Worklist, users with assigned categories see requests belonging to their categories
       // Super Admin and Change Admin have organization-wide visibility across all categories
       if (!organizationScope && !isSuperOrAdmin) {
@@ -626,6 +619,12 @@ export const updateDraftChangeRequestService = async (id, actorId, payload = {})
   if (payload.managerEmail !== undefined) {
     const managerEmailInput = payload.managerEmail ? String(payload.managerEmail).trim() : '';
     if (managerEmailInput) {
+      const requesterEmailForCheck = (empRecord?.email || payload.currentUser?.email || cr.employeeEmail || '').trim();
+      if (requesterEmailForCheck && managerEmailInput.toLowerCase() === requesterEmailForCheck.toLowerCase()) {
+        const err = new Error('You cannot name yourself as the reporting manager for your own change request.');
+        err.statusCode = 400;
+        throw err;
+      }
       const mgrEmp = await Employee.findOne({
         where: sequelize.where(sequelize.fn('LOWER', sequelize.col('email')), managerEmailInput.toLowerCase())
       });
@@ -848,6 +847,12 @@ export const createChangeRequestService = async (payload = {}) => {
   const managerEmailInput = payload.managerEmail ? String(payload.managerEmail).trim() : '';
 
   if (managerEmailInput) {
+    const requesterEmailForCheck = (empRecord?.email || payload.currentUser?.email || requesterEmail || '').trim();
+    if (requesterEmailForCheck && managerEmailInput.toLowerCase() === requesterEmailForCheck.toLowerCase()) {
+      const err = new Error('You cannot name yourself as the reporting manager for your own change request.');
+      err.statusCode = 400;
+      throw err;
+    }
     const mgrEmp = await Employee.findOne({
       where: sequelize.where(sequelize.fn('LOWER', sequelize.col('email')), managerEmailInput.toLowerCase())
     });

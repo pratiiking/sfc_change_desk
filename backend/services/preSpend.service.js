@@ -52,6 +52,11 @@ export const createPreSpendService = async (data, user) => {
   const managerEmailInput = data.managerEmail || data.Manager ? String(data.managerEmail || data.Manager).trim() : '';
 
   if (managerEmailInput) {
+    if (managerEmailInput.toLowerCase() === requesterEmailInput.toLowerCase()) {
+      const err = new Error('You cannot name yourself as the reporting manager for your own Pre-Spend request.');
+      err.statusCode = 400;
+      throw err;
+    }
     const mgrEmp = await Employee.findOne({
       where: sequelize.where(sequelize.fn('LOWER', sequelize.col('email')), managerEmailInput.toLowerCase())
     });
@@ -181,13 +186,6 @@ export const getPreSpendRequestsService = async ({ user, userId, isWorklist = fa
     andConditions.push({ employeeId: myEmployeeId || '__no_match__' });
   }
 
-  // 2. My Worklist View (personal approver inbox): Exclude requests raised by the logged-in user
-  if (isWorklist && !isOrgWorklist && (currentUserId || currentUserEmail)) {
-    if (myEmployeeId) {
-      andConditions.push({ employeeId: { [Op.ne]: myEmployeeId } });
-    }
-  }
-
   if (status && status !== 'All') {
     if (status.toLowerCase() === 'pending') {
       where.status = { [Op.iLike]: '%Pending%' };
@@ -267,14 +265,9 @@ export const getPreSpendRequestsService = async ({ user, userId, isWorklist = fa
     approvalMap.get(a.preSpendRequestId).push(a);
   });
 
-  // Calculate summary metrics & category distributions within the scoped where (excluding self in worklist and respecting dateClause, but without the status filter constraint so metric cards and tabs show overall counts)
+  // Calculate summary metrics & category distributions within the scoped where (respecting dateClause, but without the status filter constraint so metric cards and tabs show overall counts)
   const scopedWhere = {};
-  if (isWorklist && !isOrgWorklist && (currentUserId || currentUserEmail)) {
-    const andConditions = [];
-    if (myEmployeeId) andConditions.push({ employeeId: { [Op.ne]: myEmployeeId } });
-    if (dateClause) andConditions.push(dateClause);
-    if (andConditions.length > 0) scopedWhere[Op.and] = andConditions;
-  } else if (dateClause) {
+  if (dateClause) {
     scopedWhere[Op.and] = [dateClause];
   }
   if (!isWorklist && !isOrgView && currentUserId) {

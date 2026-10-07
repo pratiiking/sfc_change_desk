@@ -514,6 +514,7 @@ export default function PreSpendPage({ onNavigate, user, initialCostCentre = '',
                 onSelect={(u) => setRequesterDetails(prev => ({ ...prev, managerName: u.name, managerEmail: u.email }))}
                 users={availableUsers}
                 loading={loadingUsers}
+                excludeEmail={activeSessionUser?.employee?.email || activeSessionUser?.email || ''}
               />
 
               <div>

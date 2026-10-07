@@ -759,6 +759,7 @@ function ChangeRequestFormPage({ onNavigate, user, initialData, searchQuery = ''
                 onSelect={(u) => setFormData(prev => ({ ...prev, managerName: u.name, managerEmail: u.email || '' }))}
                 users={availableUsers}
                 loading={loadingUsers}
+                excludeEmail={activeSessionUser?.employee?.email || activeSessionUser?.email || ''}
               />
 
               {/* Manager Email */}

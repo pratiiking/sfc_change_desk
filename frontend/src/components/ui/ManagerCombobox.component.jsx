@@ -12,11 +12,17 @@ function ManagerCombobox({
   managerEmail,
   onSelect,
   users = [],
-  loading = false
+  loading = false,
+  excludeEmail = ''
 }) {
   const [open, setOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const containerRef = useRef(null);
+
+  const excludeEmailLower = (excludeEmail || '').trim().toLowerCase();
+  const selectableUsers = excludeEmailLower
+    ? users.filter((u) => (u.email || '').trim().toLowerCase() !== excludeEmailLower)
+    : users;
 
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -30,13 +36,13 @@ function ManagerCombobox({
 
   const term = searchTerm.trim().toLowerCase();
   const filteredUsers = term
-    ? users.filter((u) => {
+    ? selectableUsers.filter((u) => {
         const nameMatch = (u.name || '').toLowerCase().includes(term);
         const emailMatch = (u.email || '').toLowerCase().includes(term);
         const empIdMatch = (u.empId || '').toLowerCase().includes(term);
         return nameMatch || emailMatch || empIdMatch;
       })
-    : users;
+    : selectableUsers;
 
   const handleSelect = (user) => {
     onSelect?.(user);

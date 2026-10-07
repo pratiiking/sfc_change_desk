@@ -763,6 +763,7 @@ export default function TravelDeskPage({ onNavigate, user, travellerName = '', d
                 onSelect={(u) => setRequesterDetails(prev => ({ ...prev, managerName: u.name, managerEmail: u.email }))}
                 users={availableUsers}
                 loading={loadingUsers}
+                excludeEmail={activeSessionUser?.employee?.email || activeSessionUser?.email || ''}
               />
 
               <div>
