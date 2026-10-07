@@ -87,13 +87,20 @@ export const processNotificationJobs = async () => {
         }
 
         if (!isEligible) {
-          await job.update({ status: 'cancelled', lastError: 'Stage or cycle invalidated prior to send' });
+          // Terminal: nothing left for this job to do. notification_jobs is a
+          // work queue, not an audit log (the real decision/approval history
+          // lives in change_request_approvals etc.), so once a job is done,
+          // the row is dropped rather than archived -- the table then only
+          // ever reflects live, outstanding notification work.
+          console.warn(`[NotificationWorker] Job ${job.id} (${job.module}/${job.requestId}) cancelled: Stage or cycle invalidated prior to send`);
+          await job.destroy();
           continue;
         }
 
         const buildMail = EMAIL_BUILDERS[job.module]?.[job.jobType];
         if (!buildMail) {
-          await job.update({ status: 'failed', lastError: `No email builder for ${job.module}/${job.jobType}` });
+          console.error(`[NotificationWorker] Job ${job.id} failed: No email builder for ${job.module}/${job.jobType}`);
+          await job.destroy();
           continue;
         }
         const mailPayload = await buildMail(request);
@@ -108,25 +115,29 @@ export const processNotificationJobs = async () => {
         });
 
         if (sendRes.sent || sendRes.skipped) {
-          await job.update({
-            status: 'sent',
-            sentAt: new Date(),
-            lastError: sendRes.skipped ? `Skipped: ${sendRes.skipped}` : null
-          });
+          await job.destroy();
+        } else if (job.attempts + 1 >= job.maxAttempts) {
+          console.error(`[NotificationWorker] Job ${job.id} (${job.module}/${job.requestId}) exhausted retries: ${sendRes.error || 'Unknown send failure'}`);
+          await job.destroy();
         } else {
           await job.update({
-            status: job.attempts + 1 >= job.maxAttempts ? 'failed' : 'pending',
+            status: 'pending',
             lastError: sendRes.error || 'Unknown send failure',
             lockedUntil: new Date(Date.now() + 60000 * (job.attempts + 1)) // exponential backoff
           });
         }
       } catch (err) {
-        console.error(`[NotificationWorker] Job ${job.id} failed:`, err.message);
-        await job.update({
-          status: job.attempts + 1 >= job.maxAttempts ? 'failed' : 'pending',
-          lastError: err.message,
-          lockedUntil: new Date(Date.now() + 60000 * (job.attempts + 1))
-        });
+        if (job.attempts + 1 >= job.maxAttempts) {
+          console.error(`[NotificationWorker] Job ${job.id} exhausted retries:`, err.message);
+          await job.destroy();
+        } else {
+          console.error(`[NotificationWorker] Job ${job.id} failed, will retry:`, err.message);
+          await job.update({
+            status: 'pending',
+            lastError: err.message,
+            lockedUntil: new Date(Date.now() + 60000 * (job.attempts + 1))
+          });
+        }
       }
     }
   } catch (err) {

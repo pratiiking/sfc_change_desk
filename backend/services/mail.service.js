@@ -610,14 +610,24 @@ export const verifyMailTransport = async () => {
 
 // ---------- Templated emails ------------------------------
 
-/** Stage 2: Change request advancing to Change Manager review → notify Change Managers directly in TO. */
+/**
+ * Stage 2: Change request advancing to Change Manager review → notify Change
+ * Managers directly in TO.
+ *
+ * When more than one Change Manager is assigned to the category, a single
+ * shared link would let the click always be attributed to whichever email
+ * happened to be first in the list, not whoever actually clicked -- so each
+ * recipient gets their own email with their own token embedding their own
+ * address, instead of one email with multiple TO recipients sharing one link.
+ */
 export const sendChangeRequestCreatedEmail = async ({ cr, requesterName, approverEmails }) => {
   const to = asList(approverEmails);
-  const primary = to.length ? to : asList(env.MAIL_APPROVER_FALLBACK || 'approver@changedesk.local');
+  const recipients = to.length ? to : asList(env.MAIL_APPROVER_FALLBACK || 'approver@changedesk.local');
 
+  const sendToOne = async (recipientEmail) => {
   const secret = process.env.JWT_SECRET || 'sfc-change-desk-secure-jwt-secret-key-2026';
   const token = jwt.sign(
-    { crId: cr.id, stage: 'stage_2_review', approverEmail: primary[0] || 'approver@company.com' },
+    { crId: cr.id, stage: 'stage_2_review', approverEmail: recipientEmail },
     secret,
     { expiresIn: '7d' }
   );
@@ -831,10 +841,19 @@ export const sendChangeRequestCreatedEmail = async ({ cr, requesterName, approve
     }
   ];
 
-  return sendMail({ to: primary, subject, text, html, attachments });
+  return sendMail({ to: [recipientEmail], subject, text, html, attachments });
+  };
+
+  return Promise.all(recipients.map(sendToOne));
 };
 
-/** Change request approved by Change Manager → notify Change Implementers (+ requester & manager). */
+/**
+ * Change request approved by Change Manager → notify Change Implementers
+ * (+ requester & manager). When more than one Change Implementer is
+ * assigned to the category, each gets their own email with their own token
+ * embedding their own address -- see sendChangeRequestCreatedEmail for why
+ * a single shared link is wrong here.
+ */
 export const sendChangeRequestApprovedEmail = async ({
   cr,
   requesterName,
@@ -847,11 +866,12 @@ export const sendChangeRequestApprovedEmail = async ({
 }) => {
   const to = asList(implementerEmails);
   const cc = Array.from(new Set([...asList(requesterEmail), ...asList(managerEmail)].filter(Boolean)));
-  const primary = to.length ? to : asList(env.MAIL_APPROVER_FALLBACK || 'implementer@changedesk.local');
+  const recipients = to.length ? to : asList(env.MAIL_APPROVER_FALLBACK || 'implementer@changedesk.local');
 
+  const sendToOne = async (recipientEmail) => {
   const secret = process.env.JWT_SECRET || 'sfc-change-desk-secure-jwt-secret-key-2026';
   const token = jwt.sign(
-    { crId: cr.id, approverEmail: primary[0] || 'implementer@company.com', defaultAction: 'implement' },
+    { crId: cr.id, approverEmail: recipientEmail, defaultAction: 'implement' },
     secret,
     { expiresIn: '7d' }
   );
@@ -1063,7 +1083,10 @@ export const sendChangeRequestApprovedEmail = async ({
     }
   ];
 
-  return sendMail({ to: primary, cc, subject, text, html, attachments });
+  return sendMail({ to: [recipientEmail], cc, subject, text, html, attachments });
+  };
+
+  return Promise.all(recipients.map(sendToOne));
 };
 
 /** Change request marked as Implemented → notify Requester (+ manager & Change Manager as CC). */
@@ -1398,14 +1421,21 @@ export const extractVendorAttachments = (vendors = []) => {
 /**
  * Pre-Spend Created -> Notify Pre-Spend Admin & Board (with attached Quotation PDFs)
  */
+/**
+ * When more than one Board Member/Admin is eligible, each gets their own
+ * email with their own token embedding their own address -- see
+ * sendChangeRequestCreatedEmail for why a single shared link is wrong here.
+ */
 export const sendPreSpendCreatedEmail = async ({ preSpend, requesterName, requesterEmail, approverEmails }) => {
   const to = asList(approverEmails);
-  const primary = to.length ? to : asList(env.MAIL_APPROVER_FALLBACK || 'prespend-admin@changedesk.local');
+  const recipients = to.length ? to : asList(env.MAIL_APPROVER_FALLBACK || 'prespend-admin@changedesk.local');
+
+  const sendToOne = async (recipientEmail) => {
   const worklistUrl = `${appUrl()}/`;
 
   const secret = process.env.JWT_SECRET || 'sfc-change-desk-secure-jwt-secret-key-2026';
   const token = jwt.sign(
-    { preSpendId: preSpend.id, approverEmail: primary[0] || 'approver@company.com' },
+    { preSpendId: preSpend.id, approverEmail: recipientEmail },
     secret,
     { expiresIn: '7d' }
   );
@@ -1571,7 +1601,7 @@ export const sendPreSpendCreatedEmail = async ({ preSpend, requesterName, reques
   const attachments = [...mailAttachments(), ...vendorAttachments];
 
   return sendMail({
-    to: primary,
+    to: [recipientEmail],
     cc: reqEmail ? [reqEmail] : undefined,
     replyTo: reqEmail || undefined,
     subject,
@@ -1579,6 +1609,9 @@ export const sendPreSpendCreatedEmail = async ({ preSpend, requesterName, reques
     html,
     attachments
   });
+  };
+
+  return Promise.all(recipients.map(sendToOne));
 };
 
 /**
@@ -1651,14 +1684,21 @@ export const sendPreSpendDecisionEmail = async ({ preSpend, action, comment, dec
 /**
  * Travel Request Created -> Notify Travel Admin & Board (Special short notice routing)
  */
+/**
+ * When more than one Travel Admin/Board Member is eligible, each gets their
+ * own email with their own token embedding their own address -- see
+ * sendChangeRequestCreatedEmail for why a single shared link is wrong here.
+ */
 export const sendTravelCreatedEmail = async ({ travelReq, requesterName, requesterEmail, approverEmails, isShortNotice = false }) => {
   const to = asList(approverEmails);
-  const primary = to.length ? to : asList(env.MAIL_APPROVER_FALLBACK || 'travel-admin@changedesk.local');
+  const recipients = to.length ? to : asList(env.MAIL_APPROVER_FALLBACK || 'travel-admin@changedesk.local');
+
+  const sendToOne = async (recipientEmail) => {
   const worklistUrl = `${appUrl()}/`;
 
   const secret = process.env.JWT_SECRET || 'sfc-change-desk-secure-jwt-secret-key-2026';
   const token = jwt.sign(
-    { travelId: travelReq.id, approverEmail: primary[0] || 'approver@company.com' },
+    { travelId: travelReq.id, approverEmail: recipientEmail },
     secret,
     { expiresIn: '7d' }
   );
@@ -1793,7 +1833,7 @@ export const sendTravelCreatedEmail = async ({ travelReq, requesterName, request
     `Reject: ${rejectUrl}\n`;
 
   return sendMail({
-    to: primary,
+    to: [recipientEmail],
     cc: travellerEmail ? [travellerEmail] : undefined,
     replyTo: travellerEmail || undefined,
     subject,
@@ -1801,6 +1841,9 @@ export const sendTravelCreatedEmail = async ({ travelReq, requesterName, request
     html,
     attachments: mailAttachments()
   });
+  };
+
+  return Promise.all(recipients.map(sendToOne));
 };
 
 /**
