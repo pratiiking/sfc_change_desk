@@ -3,7 +3,7 @@ import jwt from 'jsonwebtoken';
 import { ChangeRequest, ChangeRequestApproval, Employee } from '../models/index.js';
 import { PreSpendRequest } from '../models/PreSpendRequest.js';
 import { TravelRequest } from '../models/TravelRequest.js';
-import { PreSpendApproval, TravelApproval } from '../models/index.js';
+import { PreSpendApproval, TravelApproval, ApprovalDecision } from '../models/index.js';
 import { serializeChangeRequest } from '../utils/serializers.js';
 import {
   applyWorklistActionService,
@@ -59,7 +59,7 @@ router.get('/change-request-action', async (req, res) => {
       const lastAction = isAlreadyProcessed
         ? await PreSpendApproval.findOne({
             where: { preSpendRequestId: ps.id },
-            include: [{ model: Employee, as: 'decider' }],
+            include: [{ model: Employee, as: 'decider' }, { model: ApprovalDecision, as: 'decisionRecord' }],
             order: [['decidedAt', 'DESC']]
           })
         : null;
@@ -82,7 +82,7 @@ router.get('/change-request-action', async (req, res) => {
           alreadyProcessedDetails: isAlreadyProcessed ? {
             status: ps.status,
             action: ps.status === 'Approved' ? 'approve' : ps.status === 'Rejected' ? 'reject' : 'processed',
-            decision: lastAction?.decision || ps.status,
+            decision: lastAction?.decisionRecord?.code || ps.status,
             decidedBy: lastAction?.decider?.name || ps.managerName || 'Approver',
             decidedByEmail: lastAction?.decider?.email || null,
             comment: lastAction?.comment || null,
@@ -111,7 +111,7 @@ router.get('/change-request-action', async (req, res) => {
       const lastAction = isAlreadyProcessed
         ? await TravelApproval.findOne({
             where: { travelRequestId: tr.id },
-            include: [{ model: Employee, as: 'decider' }],
+            include: [{ model: Employee, as: 'decider' }, { model: ApprovalDecision, as: 'decisionRecord' }],
             order: [['decidedAt', 'DESC']]
           })
         : null;
@@ -134,7 +134,7 @@ router.get('/change-request-action', async (req, res) => {
           alreadyProcessedDetails: isAlreadyProcessed ? {
             status: tr.status,
             action: tr.status === 'Approved' ? 'approve' : tr.status === 'Rejected' ? 'reject' : 'processed',
-            decision: lastAction?.decision || tr.status,
+            decision: lastAction?.decisionRecord?.code || tr.status,
             decidedBy: lastAction?.decider?.name || tr.managerName || 'Approver',
             decidedByEmail: lastAction?.decider?.email || null,
             comment: lastAction?.comment || null,

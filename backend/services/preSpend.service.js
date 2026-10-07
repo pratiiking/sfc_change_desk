@@ -2,7 +2,7 @@ import { Op, fn, col } from 'sequelize';
 import { APPROVAL_STAGE, isManagerReviewStage, isStage2ReviewStage, initialApprovalState } from '../config/approvalWorkflow.js';
 import { ROLE } from '../config/constants.js';
 import { PreSpendRequest } from '../models/PreSpendRequest.js';
-import { PreSpendVendorQuote, PreSpendApproval } from '../models/index.js';
+import { PreSpendVendorQuote, PreSpendApproval, Role, ApprovalDecision } from '../models/index.js';
 import { Employee } from '../models/Employee.js';
 import { sequelize, getNextRequestCode } from '../config/database.js';
 import { getBoardMemberEmails, getPreSpendAdminEmails } from './userManagement.service.js';
@@ -239,7 +239,11 @@ export const getPreSpendRequestsService = async ({ user, userId, isWorklist = fa
         PreSpendVendorQuote.findAll({ where: { preSpendRequestId: { [Op.in]: pageIds } }, order: [['id', 'ASC']] }),
         PreSpendApproval.findAll({
           where: { preSpendRequestId: { [Op.in]: pageIds } },
-          include: [{ model: Employee, as: 'decider' }],
+          include: [
+            { model: Employee, as: 'decider' },
+            { model: Role, as: 'deciderRoleRecord' },
+            { model: ApprovalDecision, as: 'decisionRecord' }
+          ],
           order: [['decidedAt', 'ASC']]
         })
       ])
@@ -321,8 +325,8 @@ export const getPreSpendRequestsService = async ({ user, userId, isWorklist = fa
     const vendorQuotes = vendorQuoteMap.get(r.id) || [];
     const approvals = approvalMap.get(r.id) || [];
     const lastApproval = approvals[approvals.length - 1] || null;
-    const approvedRecord = approvals.find(a => /approved/i.test(a.decision));
-    const rejectedRecord = approvals.find(a => /rejected/i.test(a.decision));
+    const approvedRecord = approvals.find(a => a.decisionRecord?.code === 'Approved');
+    const rejectedRecord = approvals.find(a => a.decisionRecord?.code === 'Rejected');
     const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : null;
     const selectedVendorQuote = vendorQuotes.find(v => v.isSelected) || vendorQuotes[0] || null;
 
@@ -364,9 +368,9 @@ export const getPreSpendRequestsService = async ({ user, userId, isWorklist = fa
       comments: approvals.map((h, idx) => ({
         id: `act-${idx}`,
         authorName: h.decider?.name || 'Reviewer',
-        authorRole: h.deciderRole || 'Approver',
+        authorRole: h.deciderRoleRecord?.name || 'Reporting Manager',
         text: h.comment || '',
-        action: h.decision,
+        action: h.decisionRecord?.code,
         createdAt: h.decidedAt
       })),
       decidedBy: lastApproval?.decider?.name || null,
@@ -561,9 +565,9 @@ const handlePreSpendActionWithinTransaction = async ({ id, action, actionComment
       await PreSpendApproval.create({
         preSpendRequestId: req.id,
         stage: 'manager_review',
-        employeeId: deciderEmployeeId,
-        deciderRole: 'Reporting Manager',
-        decision: 'Rejected by Manager',
+        deciderId: deciderEmployeeId,
+        deciderRoleId: actor?.roleId || null,
+        decisionId: 2,
         comment: actionComment,
         decidedAt: new Date()
       }, { transaction });
@@ -597,9 +601,9 @@ const handlePreSpendActionWithinTransaction = async ({ id, action, actionComment
       await PreSpendApproval.create({
         preSpendRequestId: req.id,
         stage: 'manager_review',
-        employeeId: deciderEmployeeId,
-        deciderRole: 'Reporting Manager',
-        decision: 'Manager Approved',
+        deciderId: deciderEmployeeId,
+        deciderRoleId: actor?.roleId || null,
+        decisionId: 1,
         comment: actionComment,
         decidedAt: new Date()
       }, { transaction });
@@ -651,9 +655,9 @@ const handlePreSpendActionWithinTransaction = async ({ id, action, actionComment
   await PreSpendApproval.create({
     preSpendRequestId: req.id,
     stage: 'stage_2_review',
-    employeeId: deciderEmployeeId,
-    deciderRole: deciderRoleLabel,
-    decision: newStatus,
+    deciderId: deciderEmployeeId,
+    deciderRoleId: actor?.roleId || null,
+    decisionId: action === 'approve' ? 1 : 2,
     comment: actionComment,
     decidedAt: new Date()
   }, { transaction });

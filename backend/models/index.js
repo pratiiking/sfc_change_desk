@@ -199,21 +199,35 @@ export const PreSpendVendorQuote = sequelize.define(
 PreSpendRequest.hasMany(PreSpendVendorQuote, { foreignKey: 'preSpendRequestId', as: 'vendorQuotes' });
 PreSpendVendorQuote.belongsTo(PreSpendRequest, { foreignKey: 'preSpendRequestId' });
 
+// ---------- Approval decision outcomes (was a hand-typed string everywhere) ----------
+export const ApprovalDecision = sequelize.define(
+  'ApprovalDecision',
+  {
+    id: { type: DataTypes.SMALLINT, primaryKey: true },
+    code: { type: DataTypes.STRING(20), allowNull: false, unique: true }
+  },
+  { tableName: 'approval_decisions', timestamps: false }
+);
+
 // ---------- Approval decision ledgers (was a JSONB array on each request table) ----------
 // One row per decision (Stage 1 manager review or Stage 2 admin/board review).
-// employeeId is a real FK to employees -- every possible decider (reporting
+// deciderId is a real FK to employees -- every possible decider (reporting
 // manager, Board member, Admin, Super Admin) is resolvable to a real
 // employee record via email, so this stays consistently employee-anchored
 // across both stages instead of mixing login-identity and employee concepts.
+// deciderRoleId is the decider's hot_desk_roles.id *at the time of the
+// decision* (nullable: a plain Reporting Manager with no elevated role has
+// none) -- resolved directly from the already-authenticated actor's roleId,
+// never hardcoded. decisionId replaces the free-text decision string.
 export const PreSpendApproval = sequelize.define(
   'PreSpendApproval',
   {
     id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
     preSpendRequestId: { type: DataTypes.STRING, allowNull: false, field: 'pre_spend_request_id' },
     stage: { type: DataTypes.STRING(32), allowNull: false },
-    employeeId: { type: DataTypes.STRING(64), allowNull: false, field: 'employee_id' },
-    deciderRole: { type: DataTypes.STRING(100), allowNull: false, field: 'decider_role' },
-    decision: { type: DataTypes.STRING(20), allowNull: false },
+    deciderId: { type: DataTypes.STRING(64), allowNull: false, field: 'decider_id' },
+    deciderRoleId: { type: DataTypes.UUID, allowNull: true, field: 'decider_role_id' },
+    decisionId: { type: DataTypes.SMALLINT, allowNull: false, field: 'decision_id' },
     comment: { type: DataTypes.TEXT, allowNull: true },
     decidedAt: { type: DataTypes.DATE, allowNull: false, field: 'decided_at' }
   },
@@ -221,7 +235,9 @@ export const PreSpendApproval = sequelize.define(
 );
 PreSpendRequest.hasMany(PreSpendApproval, { foreignKey: 'preSpendRequestId', as: 'approvalRecords' });
 PreSpendApproval.belongsTo(PreSpendRequest, { foreignKey: 'preSpendRequestId' });
-PreSpendApproval.belongsTo(Employee, { foreignKey: 'employeeId', targetKey: 'empId', as: 'decider' });
+PreSpendApproval.belongsTo(Employee, { foreignKey: 'deciderId', targetKey: 'empId', as: 'decider' });
+PreSpendApproval.belongsTo(Role, { foreignKey: 'deciderRoleId', as: 'deciderRoleRecord' });
+PreSpendApproval.belongsTo(ApprovalDecision, { foreignKey: 'decisionId', as: 'decisionRecord' });
 
 export const TravelApproval = sequelize.define(
   'TravelApproval',
@@ -229,9 +245,9 @@ export const TravelApproval = sequelize.define(
     id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
     travelRequestId: { type: DataTypes.STRING, allowNull: false, field: 'travel_request_id' },
     stage: { type: DataTypes.STRING(32), allowNull: false },
-    employeeId: { type: DataTypes.STRING(64), allowNull: false, field: 'employee_id' },
-    deciderRole: { type: DataTypes.STRING(100), allowNull: false, field: 'decider_role' },
-    decision: { type: DataTypes.STRING(20), allowNull: false },
+    deciderId: { type: DataTypes.STRING(64), allowNull: false, field: 'decider_id' },
+    deciderRoleId: { type: DataTypes.UUID, allowNull: true, field: 'decider_role_id' },
+    decisionId: { type: DataTypes.SMALLINT, allowNull: false, field: 'decision_id' },
     comment: { type: DataTypes.TEXT, allowNull: true },
     decidedAt: { type: DataTypes.DATE, allowNull: false, field: 'decided_at' }
   },
@@ -239,7 +255,9 @@ export const TravelApproval = sequelize.define(
 );
 TravelRequest.hasMany(TravelApproval, { foreignKey: 'travelRequestId', as: 'approvalRecords' });
 TravelApproval.belongsTo(TravelRequest, { foreignKey: 'travelRequestId' });
-TravelApproval.belongsTo(Employee, { foreignKey: 'employeeId', targetKey: 'empId', as: 'decider' });
+TravelApproval.belongsTo(Employee, { foreignKey: 'deciderId', targetKey: 'empId', as: 'decider' });
+TravelApproval.belongsTo(Role, { foreignKey: 'deciderRoleId', as: 'deciderRoleRecord' });
+TravelApproval.belongsTo(ApprovalDecision, { foreignKey: 'decisionId', as: 'decisionRecord' });
 
 export const models = {
   Role,
@@ -258,6 +276,7 @@ export const models = {
   PreSpendApproval,
   TravelRequest,
   TravelApproval,
+  ApprovalDecision,
   NotificationJob
 };
 
