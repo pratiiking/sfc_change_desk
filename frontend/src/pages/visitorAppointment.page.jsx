@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { CalendarPlus, CheckCircle2, Plus } from 'lucide-react';
 import { FormLabel } from '../components/ui/primitives.component';
+import TimeWheelPicker from '../components/ui/TimeWheelPicker.component';
 
 const ACTIVE_FIELD_CLASS = 'w-full box-border rounded-lg border border-border bg-input px-[0.85rem] py-[0.65rem] text-[0.85rem] text-foreground outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary/30 placeholder:text-muted-foreground';
 const READONLY_FIELD_CLASS = 'w-full box-border cursor-not-allowed rounded-lg border border-border bg-input px-[0.85rem] py-[0.65rem] text-[0.85rem] text-muted-foreground opacity-80';
@@ -223,12 +224,10 @@ export default function VisitorAppointmentPage({ user, onNavigate }) {
           </div>
 
           <div>
-            <FormLabel>Expected Time</FormLabel>
-            <input
-              type="time"
+            <TimeWheelPicker
+              label="Expected Time"
               value={form.expectedTime}
-              onChange={(event) => updateField('expectedTime', event.target.value)}
-              className={ACTIVE_FIELD_CLASS}
+              onChange={(value) => updateField('expectedTime', value)}
             />
           </div>
 
