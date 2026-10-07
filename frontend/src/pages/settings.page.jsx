@@ -569,7 +569,7 @@ function SettingsPage({ user }) {
                       const disabledReason = isSelf
                         ? 'You cannot manage your own account'
                         : !canManageThisUser
-                          ? 'You cannot manage a user at or above your own rank'
+                          ? 'You cannot manage a user at or above your own role'
                           : undefined;
 
                       return (
