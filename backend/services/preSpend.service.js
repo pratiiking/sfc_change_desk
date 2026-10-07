@@ -1,6 +1,5 @@
 import { Op, fn, col } from 'sequelize';
 import { APPROVAL_STAGE, isManagerReviewStage, isStage2ReviewStage, initialApprovalState } from '../config/approvalWorkflow.js';
-import { ROLE } from '../config/constants.js';
 import { PreSpendRequest } from '../models/PreSpendRequest.js';
 import { PreSpendVendorQuote, PreSpendApproval, Role, ApprovalDecision, ApprovalStage, APPROVAL_DECISION_ID, APPROVAL_STAGE_ID } from '../models/index.js';
 import { Employee } from '../models/Employee.js';
@@ -168,15 +167,14 @@ export const getPreSpendRequestsService = async ({ user, userId, isWorklist = fa
 
   const myEmployeeId = currentUserEmail ? await resolveEmployeeIdByEmail(currentUserEmail) : null;
 
-  // Same authority check handlePreSpendActionWithinTransaction enforces for the
-  // real action -- computed once here and reused for both the per-item canAct
-  // below and the aggregate actionableCount further down, so the Worklist
-  // button's visibility can never drift from what the backend actually allows
-  // (Admin's rank-3 authority over the rank-4 module admins included).
-  const isSuperAdmin = user?.isSuperAdmin || user?.roleId === ROLE.SUPER_ADMIN || (user?.role || '').toLowerCase().includes('super');
-  const isBoardUser = user?.isBoardUser || user?.roleId === 'role-board' || (user?.role || '').toLowerCase().includes('board');
-  const isPreSpendAdmin = user?.isPreSpendAdmin || user?.roleId === ROLE.PRESPEND_ADMIN || ((user?.role || '').toLowerCase().includes('admin') && (user?.role || '').toLowerCase().includes('spend'));
-  const isAdmin = user?.roleId === ROLE.ADMIN_LEGACY || (user?.role || '').toLowerCase().trim() === 'admin';
+  // Who can decide each stage is a property of the role (hot_desk_roles.authority),
+  // not something re-derived from role IDs/names here -- granting/revoking a
+  // role's authority to decide a stage is now a data change (migration 044),
+  // not a code change. Computed once, reused for the per-item canAct below
+  // and the aggregate actionableCount further down.
+  const userPermissions = Array.isArray(user?.permissions) ? user.permissions : [];
+  const canDecidePreSpendStage1 = userPermissions.includes('preSpend.stage1.decide');
+  const canDecidePreSpendStage2 = userPermissions.includes('preSpend.stage2.decide');
 
   // 1. My Dashboard View (not worklist and not organization scope): Only requests raised by the logged-in user
   if (!isWorklist && !isOrgView && currentUserId) {
@@ -346,8 +344,8 @@ export const getPreSpendRequestsService = async ({ user, userId, isWorklist = fa
     const isPendingItem = (r.status || '').toLowerCase().includes('pending');
     const canAct = isWorklist && isPendingItem && !isSelfItem && (
       isStage1Item
-        ? (isAssignedManager || isSuperAdmin || isAdmin)
-        : (isBoardUser || isSuperAdmin || isAdmin) // Pre-Spend Admin is view-only at Stage 2, same as the real action gate
+        ? (isAssignedManager || canDecidePreSpendStage1)
+        : canDecidePreSpendStage2
     );
 
     return {
@@ -419,7 +417,11 @@ export const getPreSpendRequestsService = async ({ user, userId, isWorklist = fa
     const exclusions = [];
     if (myEmployeeId) exclusions.push({ employeeId: { [Op.ne]: myEmployeeId } });
 
-    if (isSuperAdmin || isBoardUser || isPreSpendAdmin || isAdmin) {
+    // Same set of roles that hold preSpend.worklist.view (Super Admin, Board,
+    // Admin, Pre-Spend Admin) -- counting every pending item as part of their
+    // badge even though Pre-Spend Admin specifically can't decide any of them
+    // (view-only), unchanged from the prior behavior.
+    if (userPermissions.includes('preSpend.worklist.view')) {
       const actionableWhere = { status: { [Op.iLike]: '%Pending%' } };
       if (exclusions.length > 0) actionableWhere[Op.and] = exclusions;
       actionableCount = await PreSpendRequest.count({ where: actionableWhere });
@@ -501,36 +503,11 @@ const handlePreSpendActionWithinTransaction = async ({ id, action, actionComment
     throw err;
   }
 
-  // Authorization Check
-  const actorRole = (actor?.role || actor?.roleName || '').toLowerCase();
-  const actorRoleId = actor?.roleId || '';
-  const actorRolesList = Array.isArray(actor?.roles)
-    ? actor.roles.map(r => typeof r === 'string' ? r.toLowerCase() : (r.roleId || r.roleName || '').toLowerCase())
-    : Array.isArray(actor?.rolesList)
-    ? actor.rolesList.map(r => String(r).toLowerCase())
-    : [];
-
-  const isBoardUser =
-    actorRoleId === ROLE.BOARD ||
-    actorRoleId === 'role-board' ||
-    actorRole.includes('board') ||
-    actorRolesList.some(r => r === ROLE.BOARD || r === 'role-board' || r.includes('board'));
-
-  const isSuperAdmin =
-    actorRoleId === ROLE.SUPER_ADMIN ||
-    actorRole.includes('super') ||
-    actorRolesList.some(r => r === ROLE.SUPER_ADMIN || r.includes('super'));
-
-  const isPreSpendAdmin =
-    actorRoleId === ROLE.PRESPEND_ADMIN ||
-    (actorRole.includes('admin') && (actorRole.includes('spend') || actorRole.includes('prespend'))) ||
-    actorRolesList.some(r => r === ROLE.PRESPEND_ADMIN || (r.includes('admin') && (r.includes('spend') || r.includes('prespend'))));
-
-  // Admin (rank 3) sits above the module-specific admins (rank 4) and inherits their authority.
-  const isAdmin =
-    actorRoleId === ROLE.ADMIN_LEGACY ||
-    actorRole === 'admin' ||
-    actorRolesList.some(r => r === ROLE.ADMIN_LEGACY || r === 'admin');
+  // Authorization Check -- driven by hot_desk_roles.authority, not role IDs/names.
+  const actorPermissions = Array.isArray(actor?.permissions) ? actor.permissions : [];
+  const canDecideStage1 = actorPermissions.includes('preSpend.stage1.decide');
+  const canDecideStage2 = actorPermissions.includes('preSpend.stage2.decide');
+  const canViewWorklist = actorPermissions.includes('preSpend.worklist.view');
 
   // req is row-locked (no include) -- resolve the employee/manager emails we
   // need for comparisons via direct lookups rather than the virtual getters.
@@ -566,7 +543,7 @@ const handlePreSpendActionWithinTransaction = async ({ id, action, actionComment
     const managerEmailLower = (reqManagerRecord?.email || '').toLowerCase().trim();
     const isAssignedManager = Boolean(managerEmailLower && actorEmail && managerEmailLower === actorEmail);
 
-    if (!isAssignedManager && !isSuperAdmin && !isAdmin) {
+    if (!isAssignedManager && !canDecideStage1) {
       const err = new Error('Unauthorized: This pre-spend requisition is awaiting approval from the assigned reporting manager.');
       err.statusCode = 403;
       throw err;
@@ -648,9 +625,10 @@ const handlePreSpendActionWithinTransaction = async ({ id, action, actionComment
     }
   }
 
-  // Stage 2: Board Member, Super Admin, or Admin approval (Pre-spend Admin is view-only at this stage)
-  if (!isBoardUser && !isSuperAdmin && !isAdmin) {
-    if (isPreSpendAdmin) {
+  // Stage 2: anyone holding preSpend.stage2.decide (Board, Admin, Super Admin).
+  // Pre-Spend Admin only holds worklist.view, so it stays view-only here.
+  if (!canDecideStage2) {
+    if (canViewWorklist) {
       const err = new Error('View-only access: Pre-Spend Admin cannot decide Stage 2. Pre-Spend requires Board Member approval.');
       err.statusCode = 403;
       throw err;
@@ -660,7 +638,7 @@ const handlePreSpendActionWithinTransaction = async ({ id, action, actionComment
     throw err;
   }
 
-  const deciderRoleLabel = isBoardUser ? 'Board Member' : isAdmin ? 'Admin' : 'Super Admin';
+  const deciderRoleLabel = actor?.role || actor?.roleName || 'Approver';
   const newStatus = action === 'approve' ? 'Approved' : 'Rejected';
 
   req.status = newStatus;

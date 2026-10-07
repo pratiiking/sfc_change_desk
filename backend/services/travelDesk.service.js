@@ -1,6 +1,5 @@
 import { Op } from 'sequelize';
 import { APPROVAL_STAGE, isManagerReviewStage, isStage2ReviewStage, initialApprovalState } from '../config/approvalWorkflow.js';
-import { ROLE } from '../config/constants.js';
 import { TravelRequest } from '../models/TravelRequest.js';
 import { TravelApproval, Role, ApprovalDecision, ApprovalStage, APPROVAL_DECISION_ID, APPROVAL_STAGE_ID } from '../models/index.js';
 import { Employee } from '../models/Employee.js';
@@ -188,12 +187,12 @@ export const getTravelRequestsService = async ({ user, userId, isWorklist = fals
   // Same authority check handleTravelActionWithinTransaction enforces for the
   // real action -- computed once here and reused for both the per-item canAct
   // below and the aggregate actionableCount further down, so the Worklist
-  // button's visibility can never drift from what the backend actually allows
-  // (Admin's rank-3 authority over the rank-4 module admins included).
-  const isSuperAdmin = user?.isSuperAdmin || user?.roleId === ROLE.SUPER_ADMIN || (user?.role || '').toLowerCase().includes('super');
-  const isBoardUser = user?.isBoardUser || user?.roleId === 'role-board' || (user?.role || '').toLowerCase().includes('board');
-  const isTravelAdmin = user?.isTravelAdmin || user?.roleId === ROLE.TRAVEL_ADMIN || ((user?.role || '').toLowerCase().includes('admin') && (user?.role || '').toLowerCase().includes('travel'));
-  const isAdmin = user?.roleId === ROLE.ADMIN_LEGACY || (user?.role || '').toLowerCase().trim() === 'admin';
+  // button's visibility can never drift from what the backend actually allows.
+  const userPermissions = Array.isArray(user?.permissions) ? user.permissions : [];
+  const canDecideStage1 = userPermissions.includes('travel.stage1.decide');
+  const canDecideStage2Standard = userPermissions.includes('travel.stage2.decide.standard');
+  const canDecideStage2ShortNotice = userPermissions.includes('travel.stage2.decide.shortNotice');
+  const canViewWorklist = userPermissions.includes('travel.worklist.view');
 
   // 1. My Dashboard View (not worklist and not organization scope): Only requests raised by the logged-in user
   if (!isWorklist && !isOrgView && currentUserId) {
@@ -324,10 +323,10 @@ export const getTravelRequestsService = async ({ user, userId, isWorklist = fals
     const isPendingItem = (r.status || '').toLowerCase().includes('pending');
     const canAct = isWorklist && isPendingItem && !isSelfItem && (
       isStage1Item
-        ? (isAssignedManager || isSuperAdmin || isAdmin)
+        ? (isAssignedManager || canDecideStage1)
         : r.isShortNotice
-          ? (isBoardUser || isSuperAdmin || isAdmin) // short-notice/premium requires Board-level authorization
-          : (isTravelAdmin || isBoardUser || isSuperAdmin || isAdmin)
+          ? canDecideStage2ShortNotice // short-notice/premium requires Board-level authorization
+          : (canDecideStage2Standard || canDecideStage2ShortNotice)
     );
 
     return {
@@ -411,7 +410,7 @@ export const getTravelRequestsService = async ({ user, userId, isWorklist = fals
       // silently undercount past the page size.
       if (!isWorklist) return 0;
 
-      if (!isBoardUser && !isSuperAdmin && !isTravelAdmin && !isAdmin) {
+      if (!canViewWorklist) {
         if (currentUserEmail) {
           const managerWhere = {
             status: { [Op.iLike]: '%Pending%' },
@@ -433,9 +432,9 @@ export const getTravelRequestsService = async ({ user, userId, isWorklist = fals
 
       const actionableWhere = { status: { [Op.iLike]: '%Pending%' } };
       if (exclusions.length > 0) actionableWhere[Op.and] = exclusions;
-      // Board members, Super Admins, and Admins can act on short-notice requests too;
-      // plain Travel Admins can only act on non-short-notice ones.
-      if (!isBoardUser && !isSuperAdmin && !isAdmin) actionableWhere.isShortNotice = false;
+      // Only roles holding travel.stage2.decide.shortNotice can act on short-notice
+      // requests; plain Travel Admins (standard only) are restricted to non-short-notice ones.
+      if (!canDecideStage2ShortNotice) actionableWhere.isShortNotice = false;
 
       return TravelRequest.count({ where: actionableWhere });
     })()
@@ -472,36 +471,11 @@ const handleTravelActionWithinTransaction = async ({ id, action, actionComment, 
     throw err;
   }
 
-  // Authorization Check
-  const actorRole = (actor?.role || actor?.roleName || '').toLowerCase();
-  const actorRoleId = actor?.roleId || '';
-  const actorRolesList = Array.isArray(actor?.roles)
-    ? actor.roles.map(r => typeof r === 'string' ? r.toLowerCase() : (r.roleId || r.roleName || '').toLowerCase())
-    : Array.isArray(actor?.rolesList)
-    ? actor.rolesList.map(r => String(r).toLowerCase())
-    : [];
-
-  const isBoardUser =
-    actorRoleId === ROLE.BOARD ||
-    actorRoleId === 'role-board' ||
-    actorRole.includes('board') ||
-    actorRolesList.some(r => r === ROLE.BOARD || r === 'role-board' || r.includes('board'));
-
-  const isSuperAdmin =
-    actorRoleId === ROLE.SUPER_ADMIN ||
-    actorRole.includes('super') ||
-    actorRolesList.some(r => r === ROLE.SUPER_ADMIN || r.includes('super'));
-
-  const isTravelAdmin =
-    actorRoleId === ROLE.TRAVEL_ADMIN ||
-    (actorRole.includes('admin') && actorRole.includes('travel')) ||
-    actorRolesList.some(r => r === ROLE.TRAVEL_ADMIN || (r.includes('admin') && r.includes('travel')));
-
-  // Admin (rank 3) sits above the module-specific admins (rank 4) and inherits their authority.
-  const isAdmin =
-    actorRoleId === ROLE.ADMIN_LEGACY ||
-    actorRole === 'admin' ||
-    actorRolesList.some(r => r === ROLE.ADMIN_LEGACY || r === 'admin');
+  // Authorization Check -- driven by hot_desk_roles.authority, not role IDs/names.
+  const actorPermissions = Array.isArray(actor?.permissions) ? actor.permissions : [];
+  const canDecideStage1 = actorPermissions.includes('travel.stage1.decide');
+  const canDecideStage2Standard = actorPermissions.includes('travel.stage2.decide.standard');
+  const canDecideStage2ShortNotice = actorPermissions.includes('travel.stage2.decide.shortNotice');
 
   // req is row-locked (no include) -- resolve the employee/manager emails we
   // need for comparisons via direct lookups rather than the virtual getters.
@@ -537,7 +511,7 @@ const handleTravelActionWithinTransaction = async ({ id, action, actionComment, 
     const managerEmailLower = (reqManagerRecord?.email || '').toLowerCase().trim();
     const isAssignedManager = Boolean(managerEmailLower && actorEmail && managerEmailLower === actorEmail);
 
-    if (!isAssignedManager && !isSuperAdmin && !isAdmin) {
+    if (!isAssignedManager && !canDecideStage1) {
       const err = new Error('Unauthorized: This travel request is awaiting approval from the assigned reporting manager.');
       err.statusCode = 403;
       throw err;
@@ -616,22 +590,22 @@ const handleTravelActionWithinTransaction = async ({ id, action, actionComment, 
     }
   }
 
-  // Stage 2: Travel Admin, Admin, Super Admin, or Board member
+  // Stage 2: gated by travel.stage2.decide.standard / .shortNotice.
   if (req.isShortNotice) {
-    if (!isBoardUser && !isSuperAdmin && !isAdmin) {
+    if (!canDecideStage2ShortNotice) {
       const err = new Error('This booking requires Board authorization (Premium/Business class or short-notice booking).');
       err.statusCode = 403;
       throw err;
     }
   } else {
-    if (!isTravelAdmin && !isBoardUser && !isSuperAdmin && !isAdmin) {
+    if (!canDecideStage2Standard && !canDecideStage2ShortNotice) {
       const err = new Error('Unauthorized: Only Travel Admins, Admins, or Board Members can decide Stage 2 travel requests.');
       err.statusCode = 403;
       throw err;
     }
   }
 
-  const deciderRoleLabel = isBoardUser ? 'Board Member' : isAdmin ? 'Admin' : isTravelAdmin ? 'Travel Admin' : 'Super Admin';
+  const deciderRoleLabel = actor?.role || actor?.roleName || 'Approver';
   const newStatus = action === 'approve' ? 'Approved' : 'Rejected';
 
   req.status = newStatus;
