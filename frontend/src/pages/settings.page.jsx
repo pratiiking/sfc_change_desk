@@ -557,7 +557,22 @@ function SettingsPage({ user }) {
                       </td>
                     </tr>
                   ) : (
-                    users.slice((usersPage - 1) * usersPageSize, usersPage * usersPageSize).map((u, idx, arr) => (
+                    users.slice((usersPage - 1) * usersPageSize, usersPage * usersPageSize).map((u, idx, arr) => {
+                      // Same rank rule the backend enforces (assertCanManage): you can
+                      // only manage someone strictly below your own rank, and never
+                      // yourself. Disable upfront instead of letting them fill out the
+                      // whole form and hit a 403 on save.
+                      const isSelf = String(u.id) === String(user?.id);
+                      const targetRank = roleRankById.get(u.roleId);
+                      const canManageThisUser = !isSelf && targetRank !== undefined && targetRank > actorRank;
+                      const manageDisabled = isRequester || !canManageThisUser;
+                      const disabledReason = isSelf
+                        ? 'You cannot manage your own account'
+                        : !canManageThisUser
+                          ? 'You cannot manage a user at or above your own rank'
+                          : undefined;
+
+                      return (
                       <tr key={u.id} className={idx === arr.length - 1 ? '' : 'border-b border-border'}>
                         <td className="whitespace-nowrap px-[0.85rem] py-[0.75rem] text-sm font-medium text-foreground">{u.name}</td>
                         <td className="whitespace-nowrap px-[0.85rem] py-[0.75rem] font-[var(--font-mono)] text-[0.825rem] text-muted-foreground">{u.email}</td>
@@ -580,16 +595,18 @@ function SettingsPage({ user }) {
                           <button
                             type="button"
                             onClick={() => handleOpenManageUser(u)}
-                            disabled={isRequester}
+                            disabled={manageDisabled}
+                            title={disabledReason}
                             className={`whitespace-nowrap border-0 bg-transparent text-[0.8rem] font-semibold ${
-                              isRequester ? 'cursor-not-allowed text-muted-foreground opacity-40' : 'cursor-pointer text-info opacity-100'
+                              manageDisabled ? 'cursor-not-allowed text-muted-foreground opacity-40' : 'cursor-pointer text-info opacity-100'
                             }`}
                           >
                             Manage user
                           </button>
                         </td>
                       </tr>
-                    ))
+                      );
+                    })
                   )}
                 </tbody>
               </table>
