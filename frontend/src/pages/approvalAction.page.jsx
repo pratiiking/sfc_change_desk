@@ -186,7 +186,24 @@ export default function ApprovalActionPage() {
       });
 
       const body = await res.json();
+
+      // 409 = the backend's row-locked recheck found someone else already
+      // decided this in the moment between this page loading and this
+      // submit landing (e.g. two Change Managers assigned to the same
+      // category, both with the page open). Treat it the same as the
+      // "already processed" path the GET-time check uses, rather than a
+      // generic inline error with a still-clickable button -- there's
+      // nothing left for this submission to retry.
       if (!res.ok) {
+        if (res.status === 409) {
+          setIsProcessed(true);
+          setProcessedDetails({
+            status: crData?.status || 'Processed',
+            decision: crData?.status || 'Processed',
+            comment: body.message
+          });
+          return;
+        }
         throw new Error(body.message || 'Failed to record your decision.');
       }
 
