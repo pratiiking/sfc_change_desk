@@ -209,6 +209,27 @@ export const ApprovalDecision = sequelize.define(
   { tableName: 'approval_decisions', timestamps: false }
 );
 
+// ---------- Approval stages (was a hand-typed string everywhere) ----------
+// Adding/removing a stage is a data change here, not a hunt through service
+// code for hardcoded 'manager_review'/'stage_2_review' string literals.
+export const ApprovalStage = sequelize.define(
+  'ApprovalStage',
+  {
+    id: { type: DataTypes.SMALLINT, primaryKey: true },
+    code: { type: DataTypes.STRING(32), allowNull: false, unique: true },
+    name: { type: DataTypes.STRING(100), allowNull: false },
+    sequence: { type: DataTypes.SMALLINT, allowNull: false }
+  },
+  { tableName: 'approval_stages', timestamps: false }
+);
+
+// Named handles for the seeded rows (see migration 039/040) so service code
+// never writes a bare, unexplained 1/2 -- still just data underneath, so
+// adding a new decision/stage is still only ever a migration, not a code
+// change to these maps.
+export const APPROVAL_DECISION_ID = Object.freeze({ APPROVED: 1, REJECTED: 2 });
+export const APPROVAL_STAGE_ID = Object.freeze({ MANAGER_REVIEW: 1, STAGE_2_REVIEW: 2 });
+
 // ---------- Approval decision ledgers (was a JSONB array on each request table) ----------
 // One row per decision (Stage 1 manager review or Stage 2 admin/board review).
 // deciderId is a real FK to employees -- every possible decider (reporting
@@ -224,7 +245,7 @@ export const PreSpendApproval = sequelize.define(
   {
     id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
     preSpendRequestId: { type: DataTypes.STRING, allowNull: false, field: 'pre_spend_request_id' },
-    stage: { type: DataTypes.STRING(32), allowNull: false },
+    stageId: { type: DataTypes.SMALLINT, allowNull: false, field: 'stage_id' },
     deciderId: { type: DataTypes.STRING(64), allowNull: false, field: 'decider_id' },
     deciderRoleId: { type: DataTypes.UUID, allowNull: true, field: 'decider_role_id' },
     decisionId: { type: DataTypes.SMALLINT, allowNull: false, field: 'decision_id' },
@@ -238,13 +259,14 @@ PreSpendApproval.belongsTo(PreSpendRequest, { foreignKey: 'preSpendRequestId' })
 PreSpendApproval.belongsTo(Employee, { foreignKey: 'deciderId', targetKey: 'empId', as: 'decider' });
 PreSpendApproval.belongsTo(Role, { foreignKey: 'deciderRoleId', as: 'deciderRoleRecord' });
 PreSpendApproval.belongsTo(ApprovalDecision, { foreignKey: 'decisionId', as: 'decisionRecord' });
+PreSpendApproval.belongsTo(ApprovalStage, { foreignKey: 'stageId', as: 'stageRecord' });
 
 export const TravelApproval = sequelize.define(
   'TravelApproval',
   {
     id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
     travelRequestId: { type: DataTypes.STRING, allowNull: false, field: 'travel_request_id' },
-    stage: { type: DataTypes.STRING(32), allowNull: false },
+    stageId: { type: DataTypes.SMALLINT, allowNull: false, field: 'stage_id' },
     deciderId: { type: DataTypes.STRING(64), allowNull: false, field: 'decider_id' },
     deciderRoleId: { type: DataTypes.UUID, allowNull: true, field: 'decider_role_id' },
     decisionId: { type: DataTypes.SMALLINT, allowNull: false, field: 'decision_id' },
@@ -258,6 +280,7 @@ TravelApproval.belongsTo(TravelRequest, { foreignKey: 'travelRequestId' });
 TravelApproval.belongsTo(Employee, { foreignKey: 'deciderId', targetKey: 'empId', as: 'decider' });
 TravelApproval.belongsTo(Role, { foreignKey: 'deciderRoleId', as: 'deciderRoleRecord' });
 TravelApproval.belongsTo(ApprovalDecision, { foreignKey: 'decisionId', as: 'decisionRecord' });
+TravelApproval.belongsTo(ApprovalStage, { foreignKey: 'stageId', as: 'stageRecord' });
 
 export const models = {
   Role,
@@ -277,6 +300,7 @@ export const models = {
   TravelRequest,
   TravelApproval,
   ApprovalDecision,
+  ApprovalStage,
   NotificationJob
 };
 

@@ -2,7 +2,7 @@ import { Op, fn, col } from 'sequelize';
 import { APPROVAL_STAGE, isManagerReviewStage, isStage2ReviewStage, initialApprovalState } from '../config/approvalWorkflow.js';
 import { ROLE } from '../config/constants.js';
 import { PreSpendRequest } from '../models/PreSpendRequest.js';
-import { PreSpendVendorQuote, PreSpendApproval, Role, ApprovalDecision } from '../models/index.js';
+import { PreSpendVendorQuote, PreSpendApproval, Role, ApprovalDecision, ApprovalStage, APPROVAL_DECISION_ID, APPROVAL_STAGE_ID } from '../models/index.js';
 import { Employee } from '../models/Employee.js';
 import { sequelize, getNextRequestCode } from '../config/database.js';
 import { getBoardMemberEmails, getPreSpendAdminEmails } from './userManagement.service.js';
@@ -564,10 +564,10 @@ const handlePreSpendActionWithinTransaction = async ({ id, action, actionComment
 
       await PreSpendApproval.create({
         preSpendRequestId: req.id,
-        stage: 'manager_review',
+        stageId: APPROVAL_STAGE_ID.MANAGER_REVIEW,
         deciderId: deciderEmployeeId,
         deciderRoleId: actor?.roleId || null,
-        decisionId: 2,
+        decisionId: APPROVAL_DECISION_ID.REJECTED,
         comment: actionComment,
         decidedAt: new Date()
       }, { transaction });
@@ -600,10 +600,10 @@ const handlePreSpendActionWithinTransaction = async ({ id, action, actionComment
 
       await PreSpendApproval.create({
         preSpendRequestId: req.id,
-        stage: 'manager_review',
+        stageId: APPROVAL_STAGE_ID.MANAGER_REVIEW,
         deciderId: deciderEmployeeId,
         deciderRoleId: actor?.roleId || null,
-        decisionId: 1,
+        decisionId: APPROVAL_DECISION_ID.APPROVED,
         comment: actionComment,
         decidedAt: new Date()
       }, { transaction });
@@ -654,10 +654,10 @@ const handlePreSpendActionWithinTransaction = async ({ id, action, actionComment
 
   await PreSpendApproval.create({
     preSpendRequestId: req.id,
-    stage: 'stage_2_review',
+    stageId: APPROVAL_STAGE_ID.STAGE_2_REVIEW,
     deciderId: deciderEmployeeId,
     deciderRoleId: actor?.roleId || null,
-    decisionId: action === 'approve' ? 1 : 2,
+    decisionId: action === 'approve' ? APPROVAL_DECISION_ID.APPROVED : APPROVAL_DECISION_ID.REJECTED,
     comment: actionComment,
     decidedAt: new Date()
   }, { transaction });
