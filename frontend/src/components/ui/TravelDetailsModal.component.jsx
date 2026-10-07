@@ -16,7 +16,6 @@ import {
   ArrowRight,
   Check
 } from 'lucide-react';
-import { ROLE } from '../../lib/permissions.lib';
 
 const MODE_ICONS = {
   Flight: Plane,
@@ -73,12 +72,6 @@ export default function TravelDetailsModal({ item, onClose, onApprove, onReject,
   const [commentInput, setCommentInput] = useState('');
   const [isSubmittingAction, setIsSubmittingAction] = useState(false);
   const [hoveredStepIdx, setHoveredStepIdx] = useState(null);
-
-  const roleName = (user?.role || '').toLowerCase();
-  const roleId = user?.roleId || '';
-  const isSuperAdmin = roleId === ROLE.SUPER_ADMIN || roleName.includes('super');
-  const isBoardUser = roleId === 'role-board' || roleName.includes('board');
-  const isTravelAdmin = roleId === ROLE.TRAVEL_ADMIN || (roleName.includes('admin') && roleName.includes('travel'));
 
   const status = item.status || 'Pending Approval';
   const isApproved = status.toLowerCase().includes('approved') || status.toLowerCase().includes('booked') || status.toLowerCase().includes('ticketed');
@@ -165,13 +158,13 @@ export default function TravelDetailsModal({ item, onClose, onApprove, onReject,
     return null;
   };
 
-  // Short notice flight rule: strictly ONLY Board members can approve/reject short notice flights
   const isShortNoticeFlight = Boolean(item.isShortNotice);
-  const canActOnModal = isPending && !isStage1Pending && (
-    isShortNoticeFlight
-      ? isBoardUser // Strictly Board only (disabled for Super Admin & Travel Admin)
-      : (isTravelAdmin || isBoardUser || isSuperAdmin)
-  );
+  // canAct comes straight from the backend (getTravelRequestsService), from
+  // the same authority check the real approve/reject action enforces -- not
+  // recomputed here. The old local version restricted short-notice flights
+  // to Board only, which didn't match the real backend rule (Super Admin and
+  // Admin can act on short-notice too; only plain Travel Admin is excluded).
+  const canActOnModal = item.canAct === true;
 
   const statusBadgeClass = isApproved
     ? 'bg-[#F5F3FF] text-[#7C3AED]'
@@ -660,8 +653,10 @@ export default function TravelDetailsModal({ item, onClose, onApprove, onReject,
             </div>
           )}
 
-          {/* Short-notice Flight Board Approval Notice */}
-          {isShortNoticeFlight && isPending && !isBoardUser && (
+          {/* Short-notice Flight Board Approval Notice -- only shown to viewers who
+              genuinely can't act on it (canActOnModal already reflects the real
+              backend rule: Board, Super Admin, and Admin can all act here). */}
+          {isShortNoticeFlight && isPending && !canActOnModal && (
             <div className="flex items-center gap-[0.65rem] rounded-lg border border-[#FECACA] bg-[#FEF2F2] px-[1.1rem] py-[0.85rem]">
               <AlertTriangle size={18} className="shrink-0 text-[#DC2626]" />
               <div className="text-[0.825rem] leading-[1.4] text-[#991B1B]">

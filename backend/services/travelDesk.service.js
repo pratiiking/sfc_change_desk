@@ -185,6 +185,16 @@ export const getTravelRequestsService = async ({ user, userId, isWorklist = fals
 
   const myEmployeeId = currentUserEmail ? await resolveEmployeeIdByEmail(currentUserEmail) : null;
 
+  // Same authority check handleTravelActionWithinTransaction enforces for the
+  // real action -- computed once here and reused for both the per-item canAct
+  // below and the aggregate actionableCount further down, so the Worklist
+  // button's visibility can never drift from what the backend actually allows
+  // (Admin's rank-3 authority over the rank-4 module admins included).
+  const isSuperAdmin = user?.isSuperAdmin || user?.roleId === ROLE.SUPER_ADMIN || (user?.role || '').toLowerCase().includes('super');
+  const isBoardUser = user?.isBoardUser || user?.roleId === 'role-board' || (user?.role || '').toLowerCase().includes('board');
+  const isTravelAdmin = user?.isTravelAdmin || user?.roleId === ROLE.TRAVEL_ADMIN || ((user?.role || '').toLowerCase().includes('admin') && (user?.role || '').toLowerCase().includes('travel'));
+  const isAdmin = user?.roleId === ROLE.ADMIN_LEGACY || (user?.role || '').toLowerCase().trim() === 'admin';
+
   // 1. My Dashboard View (not worklist and not organization scope): Only requests raised by the logged-in user
   if (!isWorklist && !isOrgView && currentUserId) {
     andConditions.push({ employeeId: myEmployeeId || '__no_match__' });
@@ -308,8 +318,21 @@ export const getTravelRequestsService = async ({ user, userId, isWorklist = fals
     const rejectedRecord = approvals.find(a => a.decisionRecord?.code === 'Rejected');
     const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : null;
 
+    const isSelfItem = Boolean(myEmployeeId && r.employeeId === myEmployeeId);
+    const isStage1Item = isManagerReviewStage(r.approvalStage);
+    const isAssignedManager = Boolean(r.managerEmail && currentUserEmail && r.managerEmail.toLowerCase() === currentUserEmail);
+    const isPendingItem = (r.status || '').toLowerCase().includes('pending');
+    const canAct = isWorklist && isPendingItem && !isSelfItem && (
+      isStage1Item
+        ? (isAssignedManager || isSuperAdmin || isAdmin)
+        : r.isShortNotice
+          ? (isBoardUser || isSuperAdmin || isAdmin) // short-notice/premium requires Board-level authorization
+          : (isTravelAdmin || isBoardUser || isSuperAdmin || isAdmin)
+    );
+
     return {
       id: r.id,
+      canAct,
       requestCode: r.requestCode,
       travellerName: r.travellerName,
       travellerEmail: r.travellerEmail,
@@ -387,12 +410,6 @@ export const getTravelRequestsService = async ({ user, userId, isWorklist = fals
       // Over the FULL matching set, not just the current page, so it doesn't
       // silently undercount past the page size.
       if (!isWorklist) return 0;
-
-      const isSuperAdmin = user?.isSuperAdmin || user?.roleId === ROLE.SUPER_ADMIN || (user?.role || '').toLowerCase().includes('super');
-      const isBoardUser = user?.isBoardUser || user?.roleId === 'role-board' || (user?.role || '').toLowerCase().includes('board');
-      const isTravelAdmin = user?.isTravelAdmin || user?.roleId === ROLE.TRAVEL_ADMIN || ((user?.role || '').toLowerCase().includes('admin') && (user?.role || '').toLowerCase().includes('travel'));
-      // Admin (rank 3) sits above the module-specific admins (rank 4) and inherits their authority.
-      const isAdmin = user?.roleId === ROLE.ADMIN_LEGACY || (user?.role || '').toLowerCase().trim() === 'admin';
 
       if (!isBoardUser && !isSuperAdmin && !isTravelAdmin && !isAdmin) {
         if (currentUserEmail) {

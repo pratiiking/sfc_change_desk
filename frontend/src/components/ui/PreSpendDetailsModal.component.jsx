@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { X, IndianRupee, FileText, CheckCircle2, Clock, XCircle, Building2, Calendar, AlertTriangle, ShieldCheck, Check } from 'lucide-react';
-import { ROLE } from '../../lib/permissions.lib';
 
 const money = (value) => Number(value || 0).toLocaleString('en-IN', { style: 'currency', currency: 'INR' });
 
@@ -37,13 +36,6 @@ export default function PreSpendDetailsModal({ item, onClose, onApprove, onRejec
   const [isSubmittingAction, setIsSubmittingAction] = useState(false);
   const [hoveredStepIdx, setHoveredStepIdx] = useState(null);
 
-  const roleName = (user?.role || '').toLowerCase();
-  const roleId = user?.roleId || '';
-  const rawRoleIds = Array.isArray(user?.rolesList) ? user.rolesList : [];
-  const isSuperAdmin = Boolean(user?.isSuperAdmin || roleId === ROLE.SUPER_ADMIN || rawRoleIds.includes(ROLE.SUPER_ADMIN) || roleName.includes('super'));
-  const isBoardUser = Boolean(user?.isBoardMember || roleId === 'role-board' || roleId === ROLE.BOARD || rawRoleIds.includes(ROLE.BOARD) || rawRoleIds.includes('role-board') || roleName.includes('board'));
-  const isPreSpendAdmin = Boolean(user?.isPreSpendAdmin || roleId === ROLE.PRESPEND_ADMIN || rawRoleIds.includes(ROLE.PRESPEND_ADMIN) || (roleName.includes('admin') && (roleName.includes('spend') || roleName.includes('prespend'))));
-
   const status = item.status || 'Pending Approval';
   const isApproved = status.toLowerCase().includes('approved') || status.toLowerCase().includes('procured');
   const isRejected = status.toLowerCase().includes('rejected');
@@ -52,7 +44,12 @@ export default function PreSpendDetailsModal({ item, onClose, onApprove, onRejec
   const isStage1Pending = item.approvalStage === 'manager_review' && isPending;
   const hasManagerApproved = item.approvalStage === 'stage_2_review' || (Array.isArray(item.approvalHistory) && item.approvalHistory.some(h => (h.decision || '').toLowerCase().includes('manager approved') || (h.action || '').toLowerCase().includes('manager approved')));
 
-  const canActOnModal = isPending && !isStage1Pending && (isBoardUser || isSuperAdmin);
+  // canAct comes straight from the backend (getPreSpendRequestsService), from
+  // the same authority check the real approve/reject action enforces -- not
+  // recomputed here, since the old local recomputation (Board/Super Admin
+  // only, Stage 1 blocked outright) missed plain Admin entirely and could
+  // never agree with what the backend would actually allow.
+  const canActOnModal = item.canAct === true;
 
   const statusLabel = isRejected
     ? (item.rejectionReason?.includes('Manager') ? 'Rejected by Manager' : 'Rejected')

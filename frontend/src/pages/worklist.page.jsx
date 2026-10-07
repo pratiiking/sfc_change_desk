@@ -117,30 +117,12 @@ function MyWorklistPage({ onNavigate, searchQuery = '', user, isOrgWorklist = fa
         const res = await apiFetch(`/pre-spend?${params}`);
         if (!res.ok) throw new Error('Failed to fetch pre-spend worklist');
         const body = await res.json();
-        const userEmailLower = (user?.email || '').trim().toLowerCase();
+        // canAct now comes straight from the backend (getPreSpendRequestsService),
+        // computed from the same authority check the real approve/reject action
+        // enforces -- no local re-derivation that can drift from it (it used to
+        // miss plain Admin entirely, so Admin saw no action button here at all).
         return {
-          items: body.data && Array.isArray(body.data) ? body.data.map(i => {
-            const isSelf = Boolean(
-              (i.requesterId && (String(i.requesterId) === String(user?.id) || String(i.requesterId) === String(user?.userKey))) ||
-              (i.requesterEmail && user?.email && i.requesterEmail.trim().toLowerCase() === userEmailLower)
-            );
-            const isPending = i.status === 'Pending Approval' || (i.status || '').toLowerCase().includes('pending');
-            const isStage1 = i.approvalStage === 'manager_review';
-            const isManager = Boolean(i.managerEmail && userEmailLower && i.managerEmail.trim().toLowerCase() === userEmailLower);
-
-            let canAct = false;
-            if (isPending && !isSelf) {
-              if (isStage1) {
-                canAct = isManager || isSuperAdmin;
-              } else {
-                canAct = isBoardUser || isSuperAdmin;
-              }
-            }
-            return {
-              ...i,
-              canAct
-            };
-          }) : [],
+          items: Array.isArray(body.data) ? body.data : [],
           statusCounts: body.statusCounts || { All: 0, Pending: 0, Approved: 0, Rejected: 0 },
           metrics: body.metrics || { pending: 0, approved: 0, rejected: 0 }
         };
@@ -150,35 +132,10 @@ function MyWorklistPage({ onNavigate, searchQuery = '', user, isOrgWorklist = fa
         const res = await apiFetch(`/travel-desk?${params}`);
         if (!res.ok) throw new Error('Failed to fetch travel worklist');
         const body = await res.json();
-        const userEmailLower = (user?.email || '').trim().toLowerCase();
+        // canAct now comes straight from the backend (getTravelRequestsService) --
+        // see the prespend branch above for why.
         return {
-          items: body.data && Array.isArray(body.data) ? body.data.map(i => {
-            const isPending = i.status === 'Pending Approval' || (i.status || '').toLowerCase().includes('pending');
-            const isSelf = Boolean(
-              (i.requesterId && (String(i.requesterId) === String(user?.id) || String(i.requesterId) === String(user?.userKey))) ||
-              (i.travellerEmail && user?.email && i.travellerEmail.trim().toLowerCase() === userEmailLower) ||
-              (i.employeeEmail && user?.email && i.employeeEmail.trim().toLowerCase() === userEmailLower)
-            );
-            const isStage1 = i.approvalStage === 'manager_review';
-            const isManager = Boolean(i.managerEmail && userEmailLower && i.managerEmail.trim().toLowerCase() === userEmailLower);
-
-            let canAct = false;
-            if (isPending && !isSelf) {
-              if (isStage1) {
-                canAct = isManager || isSuperAdmin;
-              } else {
-                if (i.isShortNotice) {
-                  canAct = isBoardUser; // strictly Board user only for Stage 2 short-notice flight
-                } else {
-                  canAct = isTravelAdmin || isBoardUser || isSuperAdmin;
-                }
-              }
-            }
-            return {
-              ...i,
-              canAct
-            };
-          }) : [],
+          items: Array.isArray(body.data) ? body.data : [],
           statusCounts: body.statusCounts || { All: 0, Pending: 0, Approved: 0, Rejected: 0 },
           metrics: body.metrics || { pending: 0, approved: 0, rejected: 0 }
         };

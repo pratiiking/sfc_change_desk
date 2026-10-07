@@ -168,6 +168,16 @@ export const getPreSpendRequestsService = async ({ user, userId, isWorklist = fa
 
   const myEmployeeId = currentUserEmail ? await resolveEmployeeIdByEmail(currentUserEmail) : null;
 
+  // Same authority check handlePreSpendActionWithinTransaction enforces for the
+  // real action -- computed once here and reused for both the per-item canAct
+  // below and the aggregate actionableCount further down, so the Worklist
+  // button's visibility can never drift from what the backend actually allows
+  // (Admin's rank-3 authority over the rank-4 module admins included).
+  const isSuperAdmin = user?.isSuperAdmin || user?.roleId === ROLE.SUPER_ADMIN || (user?.role || '').toLowerCase().includes('super');
+  const isBoardUser = user?.isBoardUser || user?.roleId === 'role-board' || (user?.role || '').toLowerCase().includes('board');
+  const isPreSpendAdmin = user?.isPreSpendAdmin || user?.roleId === ROLE.PRESPEND_ADMIN || ((user?.role || '').toLowerCase().includes('admin') && (user?.role || '').toLowerCase().includes('spend'));
+  const isAdmin = user?.roleId === ROLE.ADMIN_LEGACY || (user?.role || '').toLowerCase().trim() === 'admin';
+
   // 1. My Dashboard View (not worklist and not organization scope): Only requests raised by the logged-in user
   if (!isWorklist && !isOrgView && currentUserId) {
     andConditions.push({ employeeId: myEmployeeId || '__no_match__' });
@@ -330,8 +340,19 @@ export const getPreSpendRequestsService = async ({ user, userId, isWorklist = fa
     const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : null;
     const selectedVendorQuote = vendorQuotes.find(v => v.isSelected) || vendorQuotes[0] || null;
 
+    const isSelfItem = Boolean(myEmployeeId && r.employeeId === myEmployeeId);
+    const isStage1Item = isManagerReviewStage(r.approvalStage);
+    const isAssignedManager = Boolean(r.managerEmail && currentUserEmail && r.managerEmail.toLowerCase() === currentUserEmail);
+    const isPendingItem = (r.status || '').toLowerCase().includes('pending');
+    const canAct = isWorklist && isPendingItem && !isSelfItem && (
+      isStage1Item
+        ? (isAssignedManager || isSuperAdmin || isAdmin)
+        : (isBoardUser || isSuperAdmin || isAdmin) // Pre-Spend Admin is view-only at Stage 2, same as the real action gate
+    );
+
     return {
       id: r.id,
+      canAct,
       requestCode: r.requestCode,
       category: r.category,
       subcategory: r.subcategory,
@@ -395,12 +416,6 @@ export const getPreSpendRequestsService = async ({ user, userId, isWorklist = fa
   // just the current page, so it doesn't silently undercount past the page size.
   let actionableCount = 0;
   if (isWorklist) {
-    const isSuperAdmin = user?.isSuperAdmin || user?.roleId === ROLE.SUPER_ADMIN || (user?.role || '').toLowerCase().includes('super');
-    const isBoardUser = user?.isBoardUser || user?.roleId === 'role-board' || (user?.role || '').toLowerCase().includes('board');
-    const isPreSpendAdmin = user?.isPreSpendAdmin || user?.roleId === ROLE.PRESPEND_ADMIN || ((user?.role || '').toLowerCase().includes('admin') && (user?.role || '').toLowerCase().includes('spend'));
-    // Admin (rank 3) sits above the module-specific admins (rank 4) and inherits their authority.
-    const isAdmin = user?.roleId === ROLE.ADMIN_LEGACY || (user?.role || '').toLowerCase().trim() === 'admin';
-
     const exclusions = [];
     if (myEmployeeId) exclusions.push({ employeeId: { [Op.ne]: myEmployeeId } });
 
