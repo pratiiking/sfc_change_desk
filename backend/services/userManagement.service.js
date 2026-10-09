@@ -172,9 +172,22 @@ export const getApproverEmails = async (categoryNameOrId = null) => {
     return uniqueEmails;
   }
 
+  // Tier 2: no Change Manager assigned to this category -- fall back to the
+  // Change Desk Admin ("sub admin" for this module) before reaching for
+  // system-wide Admin/Super Admin.
+  const changeAdmins = await UserS8.findAll({
+    where: { roleId: ROLE.CHANGE_ADMIN, status: 'Active' },
+    raw: true
+  });
+  const changeAdminEmails = Array.from(new Set(changeAdmins.map(a => (a.email || '').trim().toLowerCase()).filter(Boolean)));
+  if (changeAdminEmails.length > 0) {
+    return changeAdminEmails;
+  }
+
+  // Tier 3: no Change Desk Admin either -- last resort is Admin/Super Admin.
   const admins = await UserS8.findAll({
     where: {
-      roleId: { [Op.in]: [ROLE.SUPER_ADMIN, ROLE.ADMIN_LEGACY, ROLE.CHANGE_ADMIN] },
+      roleId: { [Op.in]: [ROLE.SUPER_ADMIN, ROLE.ADMIN_LEGACY] },
       status: 'Active'
     },
     raw: true
@@ -222,15 +235,28 @@ export const getImplementerEmails = async (categoryNameOrId = null) => {
     return uniqueEmails;
   }
 
-  const implementers = await UserS8.findAll({
+  // Tier 2: no Change Implementer assigned to this category -- fall back to
+  // the Change Desk Admin ("sub admin" for this module) before reaching for
+  // system-wide Admin/Super Admin.
+  const changeAdmins = await UserS8.findAll({
+    where: { roleId: ROLE.CHANGE_ADMIN, status: 'Active' },
+    raw: true
+  });
+  const changeAdminEmails = Array.from(new Set(changeAdmins.map(a => (a.email || '').trim().toLowerCase()).filter(Boolean)));
+  if (changeAdminEmails.length > 0) {
+    return changeAdminEmails;
+  }
+
+  // Tier 3: no Change Desk Admin either -- last resort is Admin/Super Admin.
+  const admins = await UserS8.findAll({
     where: {
-      roleId: { [Op.in]: [ROLE.CHANGE_IMPLEMENTER, ROLE.SUPER_ADMIN, ROLE.ADMIN_LEGACY, ROLE.CHANGE_ADMIN] },
+      roleId: { [Op.in]: [ROLE.SUPER_ADMIN, ROLE.ADMIN_LEGACY] },
       status: 'Active'
     },
     raw: true
   });
 
-  return Array.from(new Set(implementers.map(i => (i.email || '').trim().toLowerCase()).filter(Boolean)));
+  return Array.from(new Set(admins.map(a => (a.email || '').trim().toLowerCase()).filter(Boolean)));
 };
 
 export const getBoardMemberEmails = async () => {
