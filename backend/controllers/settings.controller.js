@@ -46,7 +46,7 @@ export const deleteSettingsUser = asyncHandler(async (req, res) => {
     actorEmail: req.user?.email,
     actorRoleId: req.user?.roleId
   });
-  res.json({ success: true, message: 'User deactivated and roles removed successfully', data: result });
+  res.json({ success: true, message: 'User access removed successfully', data: result });
 });
 
 export const getSettingsRoles = asyncHandler(async (req, res) => {

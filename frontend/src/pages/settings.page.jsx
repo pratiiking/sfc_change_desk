@@ -313,16 +313,16 @@ function SettingsPage({ user }) {
 
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData.message || errorData.error || `Failed to deactivate user (${res.status})`);
+        throw new Error(errorData.message || errorData.error || `Failed to remove user access (${res.status})`);
       }
 
       queryClient.invalidateQueries({ queryKey: ['settings-users'] });
-      toast.success('User deactivated and roles revoked successfully');
+      toast.success('User access removed successfully');
       setUserToDelete(null);
       setEditingUser(null);
     } catch (err) {
-      console.error('Failed to deactivate user via API:', err);
-      toast.error(`Error deactivating user: ${err.message}`);
+      console.error('Failed to remove user access via API:', err);
+      toast.error(`Error removing user access: ${err.message}`);
     } finally {
       setIsSavingUser(false);
     }
@@ -359,8 +359,7 @@ function SettingsPage({ user }) {
       roles: assignedRoles,
       categoryIds: allCategoryIds,
       cmCategoryIds: hasCM ? newUserCmCategories : [],
-      ciCategoryIds: hasCI ? newUserCiCategories : [],
-      status: newUser.status
+      ciCategoryIds: hasCI ? newUserCiCategories : []
     };
 
     try {
@@ -1192,13 +1191,13 @@ function SettingsPage({ user }) {
               </div>
               <div className="flex-1">
                 <h3 className="m-0 text-[1.15rem] font-bold text-foreground">
-                  Deactivate User Account?
+                  Remove User Access?
                 </h3>
                 <p className="mt-2 text-[0.875rem] leading-[1.5] text-muted-foreground">
-                  Are you sure you want to deactivate <strong className="text-foreground font-semibold">{userToDelete.name || userToDelete.email}</strong>?
+                  Are you sure you want to remove <strong className="text-foreground font-semibold">{userToDelete.name || userToDelete.email}</strong>'s access?
                 </p>
                 <p className="mt-1 text-[0.825rem] text-[#DC2626] font-medium">
-                  This will revoke all assigned roles and prevent this user from accessing the system.
+                  This permanently deletes their assigned role and category access. They can still sign in as a regular employee, but this cannot be undone -- re-granting access means inviting them again from scratch.
                 </p>
               </div>
             </div>
@@ -1222,10 +1221,10 @@ function SettingsPage({ user }) {
                 {isSavingUser ? (
                   <>
                     <LoadingSpinner size="xs" color="#FFFFFF" center={false} />
-                    <span>Deactivating...</span>
+                    <span>Removing...</span>
                   </>
                 ) : (
-                  <span>Yes, Deactivate User</span>
+                  <span>Yes, Remove Access</span>
                 )}
               </button>
             </div>

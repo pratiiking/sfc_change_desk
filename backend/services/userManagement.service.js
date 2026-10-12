@@ -176,7 +176,7 @@ export const getApproverEmails = async (categoryNameOrId = null) => {
   // Change Desk Admin ("sub admin" for this module) before reaching for
   // system-wide Admin/Super Admin.
   const changeAdmins = await UserS8.findAll({
-    where: { roleId: ROLE.CHANGE_ADMIN, status: 'Active' },
+    where: { roleId: ROLE.CHANGE_ADMIN },
     raw: true
   });
   const changeAdminEmails = Array.from(new Set(changeAdmins.map(a => (a.email || '').trim().toLowerCase()).filter(Boolean)));
@@ -187,8 +187,7 @@ export const getApproverEmails = async (categoryNameOrId = null) => {
   // Tier 3: no Change Desk Admin either -- last resort is Admin/Super Admin.
   const admins = await UserS8.findAll({
     where: {
-      roleId: { [Op.in]: [ROLE.SUPER_ADMIN, ROLE.ADMIN_LEGACY] },
-      status: 'Active'
+      roleId: { [Op.in]: [ROLE.SUPER_ADMIN, ROLE.ADMIN_LEGACY] }
     },
     raw: true
   });
@@ -239,7 +238,7 @@ export const getImplementerEmails = async (categoryNameOrId = null) => {
   // the Change Desk Admin ("sub admin" for this module) before reaching for
   // system-wide Admin/Super Admin.
   const changeAdmins = await UserS8.findAll({
-    where: { roleId: ROLE.CHANGE_ADMIN, status: 'Active' },
+    where: { roleId: ROLE.CHANGE_ADMIN },
     raw: true
   });
   const changeAdminEmails = Array.from(new Set(changeAdmins.map(a => (a.email || '').trim().toLowerCase()).filter(Boolean)));
@@ -250,8 +249,7 @@ export const getImplementerEmails = async (categoryNameOrId = null) => {
   // Tier 3: no Change Desk Admin either -- last resort is Admin/Super Admin.
   const admins = await UserS8.findAll({
     where: {
-      roleId: { [Op.in]: [ROLE.SUPER_ADMIN, ROLE.ADMIN_LEGACY] },
-      status: 'Active'
+      roleId: { [Op.in]: [ROLE.SUPER_ADMIN, ROLE.ADMIN_LEGACY] }
     },
     raw: true
   });
@@ -261,7 +259,7 @@ export const getImplementerEmails = async (categoryNameOrId = null) => {
 
 export const getBoardMemberEmails = async () => {
   const users = await UserS8.findAll({
-    where: { status: 'Active', roleId: ROLE.BOARD },
+    where: { roleId: ROLE.BOARD },
     raw: true
   });
   return Array.from(new Set(users.map(u => (u.email || '').trim().toLowerCase()).filter(Boolean)));
@@ -270,7 +268,7 @@ export const getBoardMemberEmails = async () => {
 export const getTravelDeskApproverEmails = async (isShortNotice = false) => {
   const roleIds = isShortNotice ? [ROLE.TRAVEL_ADMIN, ROLE.BOARD] : [ROLE.TRAVEL_ADMIN];
   const users = await UserS8.findAll({
-    where: { status: 'Active', roleId: { [Op.in]: roleIds } },
+    where: { roleId: { [Op.in]: roleIds } },
     raw: true
   });
 
@@ -283,7 +281,7 @@ export const getTravelDeskApproverEmails = async (isShortNotice = false) => {
 
 export const getPreSpendAdminEmails = async () => {
   const users = await UserS8.findAll({
-    where: { status: 'Active', roleId: ROLE.PRESPEND_ADMIN },
+    where: { roleId: ROLE.PRESPEND_ADMIN },
     raw: true
   });
   return Array.from(new Set(users.map(u => (u.email || '').trim().toLowerCase()).filter(Boolean)));
@@ -291,7 +289,7 @@ export const getPreSpendAdminEmails = async () => {
 
 export const getTravelAdminEmails = async () => {
   const users = await UserS8.findAll({
-    where: { status: 'Active', roleId: ROLE.TRAVEL_ADMIN },
+    where: { roleId: ROLE.TRAVEL_ADMIN },
     raw: true
   });
   return Array.from(new Set(users.map(u => (u.email || '').trim().toLowerCase()).filter(Boolean)));
@@ -300,7 +298,7 @@ export const getTravelAdminEmails = async () => {
 export const getPreSpendApproverEmails = async (isBoardRequired = false) => {
   const roleIds = isBoardRequired ? [ROLE.PRESPEND_ADMIN, ROLE.BOARD] : [ROLE.PRESPEND_ADMIN];
   const users = await UserS8.findAll({
-    where: { status: 'Active', roleId: { [Op.in]: roleIds } },
+    where: { roleId: { [Op.in]: roleIds } },
     raw: true
   });
 
@@ -325,10 +323,7 @@ export const getSettingsUsersService = async () => {
   ];
 
   const users = await UserS8.findAll({
-    where: {
-      roleId: { [Op.in]: PRIVILEGED_ROLE_IDS },
-      status: { [Op.ne]: 'Inactive' }
-    },
+    where: { roleId: { [Op.in]: PRIVILEGED_ROLE_IDS } },
     order: [['createdAt', 'DESC']]
   });
 
@@ -387,7 +382,6 @@ export const getSettingsUsersService = async () => {
       role: roleName,
       roles: [{ roleId: u.roleId, roleName }],
       rolesList: [u.roleId],
-      status: u.status || 'Active',
       categoryIds: Array.from(new Set([...userCmCats, ...userCiCats])),
       cmCategoryIds: userCmCats,
       ciCategoryIds: userCiCats,
@@ -430,7 +424,6 @@ export const updateSettingsUserService = async (userKey, payload = {}, meta = {}
     user.lastName = rest.join(' ') || null;
   }
   if (payload.designation) user.designation = payload.designation;
-  if (payload.status) user.status = payload.status;
 
   await user.save();
 
@@ -496,7 +489,6 @@ export const createSettingsUserService = async (payload = {}, meta = {}) => {
     user.firstName = firstName || null;
     user.lastName = lastName;
     user.roleId = primaryRole.roleId;
-    user.status = payload.status || 'Active';
     if (payload.designation) user.designation = payload.designation;
     await user.save();
   } else {
@@ -506,7 +498,6 @@ export const createSettingsUserService = async (payload = {}, meta = {}) => {
       email,
       roleId: primaryRole.roleId,
       designation: payload.designation || '',
-      status: 'Active',
       invitedBy: meta.invitedByName || meta.actorId || 'Super Admin'
     });
   }
@@ -562,27 +553,26 @@ export const deleteSettingsUserService = async (userKey, meta = {}) => {
   }
 
   const name = [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email;
+  const { id, email } = user;
 
-  // Set status to Inactive and revoke privileged roles
-  user.status = 'Inactive';
-  user.roleId = ROLE.REQUESTER;
-  await user.save();
-
-  // Clear any assigned category mappings
-  await Promise.all([
-    updateChangeManagerCategoriesService(user.id, []),
-    updateChangeImplementerCategoriesService(user.id, [])
-  ]);
+  // Real deletion, not a status flag -- the employees row (and all their
+  // past approval/decision history, which is anchored on employees.emp_id,
+  // not hot_desk_users.id) is untouched. category_role_assignments rows
+  // cascade-delete automatically (real FK, ON DELETE CASCADE -- see
+  // migration 024), so no manual cleanup needed here. Once this row is
+  // gone, IdentityResolver falls back to plain Employee/Requester access
+  // for this person on their next login, same as before.
+  await user.destroy();
 
   await addAuditLog({
     actorId: meta.actorEmpId || null,
-    action: 'User Deactivated',
-    ref: String(user.id),
-    detail: `Deactivated user ${name} (${user.email}) and revoked all privileged roles.`
+    action: 'User Deleted',
+    ref: String(id),
+    detail: `Deleted user ${name} (${email}) from hot_desk_users and revoked all privileged access.`
   }).catch((logErr) => console.warn('[auditLog] Notice:', logErr.message));
 
   IdentityResolver.clearCache();
-  return { id: user.id, email: user.email, status: 'Inactive' };
+  return { id, email, deleted: true };
 };
 
 export const getSettingsRolesService = async () => {

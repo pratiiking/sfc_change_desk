@@ -72,13 +72,12 @@ export class IdentityResolver {
       where: sequelize.where(sequelize.fn('LOWER', sequelize.col('email')), email)
     });
 
+    // A hot_desk_users row existing at all means privileged access -- there is
+    // no "deactivated but still present" state anymore; deactivating someone
+    // deletes their row (see deleteSettingsUserService), so presence alone
+    // is the signal.
     if (s8User) {
-      if (s8User.status === 'Inactive' || s8User.status === 'Suspended') {
-        // If deactivated in Settings, fall back to standard Employee login
-        // (their privileged role is revoked, but standard employee login is preserved)
-      } else {
-        return await this._buildIdentityDTO(s8User, employee);
-      }
+      return await this._buildIdentityDTO(s8User, employee);
     }
 
     // 3. If employee exists and active, return pure Employee identity without mutating hot_desk_users
@@ -132,10 +131,15 @@ export class IdentityResolver {
       return { status: 'NOT_FOUND', message: 'User key is required' };
     }
 
-    // Direct lookup by numeric id, or stripped prefix (S8-xx, EMP-xx, usr-xx)
+    // Direct lookup by numeric id, or stripped prefix (S8-xx, usr-xx).
+    // "EMP-" keys reference employees.id -- a completely different id space
+    // from hot_desk_users.id -- and must never be tried against
+    // UserS8.findByPk, which could otherwise coincidentally match an
+    // unrelated hot_desk_users row sharing the same numeric id.
     let s8User = null;
+    const isEmployeeKey = userKey.startsWith('EMP-');
     const rawId = userKey.replace(/^(S8-|EMP-|usr-)/, '');
-    if (/^\d+$/.test(rawId)) {
+    if (!isEmployeeKey && /^\d+$/.test(rawId)) {
       s8User = await UserS8.findByPk(Number(rawId));
     }
 
@@ -146,11 +150,10 @@ export class IdentityResolver {
       });
     }
 
+    // A hot_desk_users row existing at all means privileged access -- there
+    // is no "deactivated but still present" state anymore; deactivating
+    // someone deletes their row, so presence alone is the signal.
     if (s8User) {
-      if (s8User.status === 'Inactive' || s8User.status === 'Suspended') {
-        // Fallback to employee resolution to preserve login access
-        return this.resolveByEmail(s8User.email);
-      }
       return await this._buildIdentityDTO(s8User);
     }
 
@@ -238,7 +241,7 @@ export class IdentityResolver {
       isChangeManager: assignedRoleIds.includes(ROLE.CHANGE_MANAGER) || cmCategories.length > 0,
       isChangeImplementer: assignedRoleIds.includes(ROLE.CHANGE_IMPLEMENTER) || ciCategories.length > 0,
       isBoardMember: assignedRoleIds.includes(ROLE.BOARD),
-      status: s8User.status || 'Active',
+      status: 'Active',
       isExplicitRole: roleId !== ROLE.REQUESTER,
       employeeBusinessId: authoritativeEmpId,
       employeeId: authoritativeEmpId,

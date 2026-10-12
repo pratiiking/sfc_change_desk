@@ -38,11 +38,6 @@ export const UserS8 = sequelize.define(
       allowNull: false,
       field: 'role_id'
     },
-    status: {
-      type: DataTypes.STRING,
-      allowNull: true,
-      defaultValue: 'Active'
-    },
     designation: {
       type: DataTypes.STRING,
       allowNull: true

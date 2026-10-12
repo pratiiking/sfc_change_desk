@@ -282,6 +282,7 @@ PreSpendApproval.belongsTo(ApprovalDecision, { foreignKey: 'decisionId', as: 'de
 PreSpendApproval.belongsTo(ApprovalStage, { foreignKey: 'stageId', as: 'stageRecord' });
 
 ChangeRequestApproval.belongsTo(ApprovalDecision, { foreignKey: 'decisionId', as: 'decisionRecord' });
+ChangeRequestApproval.belongsTo(Employee, { foreignKey: 'approverId', targetKey: 'empId', as: 'approver' });
 
 export const TravelApproval = sequelize.define(
   'TravelApproval',

@@ -13,9 +13,13 @@ export const ChangeRequestApproval = sequelize.define(
       type: DataTypes.STRING,
       allowNull: false
     },
+    // A real FK to employees.emp_id (see migration 049) -- an employees row
+    // is permanent (never deleted, unlike hot_desk_users), so this can
+    // never again be orphaned by someone's access being removed. Nullable
+    // because a handful of pre-migration rows had no resolvable identity.
     approverId: {
       type: DataTypes.STRING,
-      allowNull: false
+      allowNull: true
     },
     decisionId: {
       type: DataTypes.SMALLINT,

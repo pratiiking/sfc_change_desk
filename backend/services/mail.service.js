@@ -14,7 +14,6 @@ import { fileURLToPath } from 'node:url';
 import nodemailer from 'nodemailer';
 import jwt from 'jsonwebtoken';
 import { ROLE } from '../config/constants.js';
-import { Op } from 'sequelize';
 import { UserS8 } from '../models/UserS8.js';
 
 const env = process.env;
@@ -22,10 +21,7 @@ const env = process.env;
 const fetchSuperAdminEmails = async () => {
   try {
     const superAdmins = await UserS8.findAll({
-      where: {
-        status: { [Op.iLike]: 'Active' },
-        roleId: ROLE.SUPER_ADMIN
-      },
+      where: { roleId: ROLE.SUPER_ADMIN },
       attributes: ['email'],
       raw: true
     });

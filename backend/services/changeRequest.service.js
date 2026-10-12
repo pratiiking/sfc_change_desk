@@ -282,14 +282,16 @@ export const getFilteredChangeRequests = async ({
   const allDecidedApprovals = await ChangeRequestApproval.findAll({
     where: { changeRequestId: { [Op.in]: pageRequestIds }, decisionId: { [Op.ne]: APPROVAL_DECISION_ID.PENDING } }
   });
+  // approverId is an employees.emp_id now, not a hot_desk_users userKey --
+  // look these up directly rather than through IdentityResolver.resolveByKey,
+  // which resolves login identities, not business-id lookups.
   const uniqueApproverIds = [...new Set(allDecidedApprovals.map((a) => a.approverId).filter(Boolean))];
-  const approverResults = await Promise.all(uniqueApproverIds.map(async (approverId) => [
-    approverId,
-    await IdentityResolver.resolveByKey(approverId)
-  ]));
-  const approverIdentities = new Map(approverResults.map(([approverId, res]) => [
-    approverId,
-    res.status === 'SUCCESS' ? res.identity : null
+  const approverEmployees = uniqueApproverIds.length > 0
+    ? await Employee.findAll({ where: { empId: { [Op.in]: uniqueApproverIds } }, attributes: ['empId', 'name', 'email'], raw: true })
+    : [];
+  const approverIdentities = new Map(approverEmployees.map((emp) => [
+    emp.empId,
+    { displayName: emp.name, name: emp.name, email: emp.email }
   ]));
 
   let deciderInfoMap = new Map();
@@ -308,13 +310,19 @@ export const getFilteredChangeRequests = async ({
   let ciCatIds = new Set();
 
   if (isWorklist && actingUserId) {
-    const userApprovals = await ChangeRequestApproval.findAll({
-      where: { approverId: actingUserId, changeRequestId: { [Op.in]: pageRequestIds } }
-    });
-    userApprovalMap = new Map(userApprovals.map((a) => [a.changeRequestId, DECISION_CODE_BY_ID[a.decisionId] || 'Pending']));
-
     actingUserKeys = new Set([actingUserId]);
     identityRes = await IdentityResolver.resolveByKey(actingUserId);
+
+    // approverId is an employees.emp_id now -- look up "my own decision" by
+    // that, not by the raw login key.
+    const actingEmpId = identityRes.status === 'SUCCESS' ? identityRes.identity?.employeeBusinessId : null;
+    const userApprovals = actingEmpId
+      ? await ChangeRequestApproval.findAll({
+          where: { approverId: actingEmpId, changeRequestId: { [Op.in]: pageRequestIds } }
+        })
+      : [];
+    userApprovalMap = new Map(userApprovals.map((a) => [a.changeRequestId, DECISION_CODE_BY_ID[a.decisionId] || 'Pending']));
+
     if (identityRes.status === 'SUCCESS' && identityRes.identity) {
       const iden = identityRes.identity;
       if (iden.userKey) actingUserKeys.add(iden.userKey);
@@ -444,10 +452,13 @@ export const getFilteredChangeRequests = async ({
     const managerEmailByManagerId = new Map(managerRecords.map(m => [m.empId, m.email]));
 
     const allRowIds = allWorklistRows.map(r => r.id);
-    const userAllApprovals = await ChangeRequestApproval.findAll({
-      where: { approverId: actingUserId, changeRequestId: { [Op.in]: allRowIds } },
-      raw: true
-    });
+    const actingEmpId = identityRes?.status === 'SUCCESS' ? identityRes.identity?.employeeBusinessId : null;
+    const userAllApprovals = actingEmpId
+      ? await ChangeRequestApproval.findAll({
+          where: { approverId: actingEmpId, changeRequestId: { [Op.in]: allRowIds } },
+          raw: true
+        })
+      : [];
     const allUserApprovalMap = new Map(userAllApprovals.map(a => [a.changeRequestId, DECISION_CODE_BY_ID[a.decisionId] || 'Pending']));
 
     for (const cr of allWorklistRows) {
@@ -504,13 +515,28 @@ const nextChangeRequestId = async (tx) => {
   return await getNextRequestCode('CR', tx);
 };
 
+// Resolves hot_desk_users rows to their employees.emp_id -- voters are
+// recorded on ChangeRequestApproval by emp_id now, not by hot_desk_users.id,
+// so this needs each voter's email to find their permanent employee record.
+const resolveEmpIdsForUsers = async (userRows, tx) => {
+  const emails = userRows.map((u) => (u.email || '').trim().toLowerCase()).filter(Boolean);
+  if (emails.length === 0) return [];
+  const { Employee } = await import('../models/Employee.js');
+  const employees = await Employee.findAll({
+    where: sequelize.where(sequelize.fn('LOWER', sequelize.col('email')), { [Op.in]: emails }),
+    attributes: ['empId', 'email'],
+    transaction: tx
+  });
+  return employees.map((e) => e.empId).filter(Boolean);
+};
+
 export async function getVotersForCategory(categoryId, tx) {
   const adminUsers = await UserS8.findAll({
     where: { roleId: { [Op.in]: [ROLE.SUPER_ADMIN, ROLE.ADMIN_LEGACY, ROLE.CHANGE_ADMIN] } },
-    attributes: ['id'],
+    attributes: ['id', 'email'],
     transaction: tx
   });
-  const adminKeys = adminUsers.map((u) => String(u.id));
+  const adminKeys = await resolveEmpIdsForUsers(adminUsers, tx);
 
   let cmKeys = [];
   if (categoryId) {
@@ -525,10 +551,10 @@ export async function getVotersForCategory(categoryId, tx) {
           id: { [Op.in]: cmUserIds },
           roleId: ROLE.CHANGE_MANAGER
         },
-        attributes: ['id'],
+        attributes: ['id', 'email'],
         transaction: tx
       });
-      cmKeys = cmUsers.map((u) => String(u.id));
+      cmKeys = await resolveEmpIdsForUsers(cmUsers, tx);
     }
   }
 
@@ -1259,20 +1285,24 @@ export const applyWorklistActionService = async ({ id, action, rejectionReason =
   const decisionId = action === 'approve' ? APPROVAL_DECISION_ID.APPROVED : APPROVAL_DECISION_ID.REJECTED;
   const finalStatus = decision;
 
+  // approverId is an employees.emp_id now, matching the pre-seeded voter
+  // roster (which is also emp_id-based -- see getVotersForCategory).
+  const deciderEmpId = identity?.employeeBusinessId || null;
+
   await sequelize.transaction(async (t) => {
     const [updatedCount] = await ChangeRequestApproval.update(
       { decisionId, decidedAt: new Date() },
-      { where: { changeRequestId: id, approverId: actorId, decisionId: APPROVAL_DECISION_ID.PENDING }, transaction: t }
+      { where: { changeRequestId: id, approverId: deciderEmpId, decisionId: APPROVAL_DECISION_ID.PENDING }, transaction: t }
     );
 
     if (updatedCount === 0) {
       const existing = await ChangeRequestApproval.findOne({
-        where: { changeRequestId: id, approverId: actorId },
+        where: { changeRequestId: id, approverId: deciderEmpId },
         transaction: t
       });
       if (!existing) {
         await ChangeRequestApproval.create(
-          { changeRequestId: id, approverId: actorId, decisionId, decidedAt: new Date() },
+          { changeRequestId: id, approverId: deciderEmpId, decisionId, decidedAt: new Date() },
           { transaction: t }
         );
       } else {
