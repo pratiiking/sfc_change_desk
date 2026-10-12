@@ -91,15 +91,29 @@ export const ChangeRequest = sequelize.define(
 );
 
 // ---------- Audit Logs -----------------------------------
+// actorId is a real FK to employees.empId -- every actor, privileged or not,
+// is resolvable to a real employee (a hot_desk_users account cannot exist
+// without a matching employees row), so this is the one value that covers
+// every case with no branching. NULL means a system-authored entry.
+//
+// `timestamp` is a legacy VARCHAR column (the live DB column is
+// `character varying`, not a real date/time type) that addAuditLog used to
+// write a locale-formatted string into -- but because this model used to
+// declare it as DataTypes.DATE, Sequelize silently re-escaped that string
+// through its own DATE serialization before it ever reached Postgres, so it
+// never actually held the human-readable format it was meant to. It's kept
+// here (nullable, unwritten going forward) only so old rows stay readable;
+// every reader already falls back to the real `createdAt` timestamptz when
+// this is null.
 export const AuditLog = sequelize.define(
   'AuditLog',
   {
     id: { type: DataTypes.BIGINT, primaryKey: true, autoIncrement: true },
-    actorId: { type: DataTypes.STRING, allowNull: false, field: 'actor_id' },
+    actorId: { type: DataTypes.STRING, allowNull: true, field: 'actor_id' },
     action: { type: DataTypes.STRING, allowNull: false },
     ref: { type: DataTypes.STRING, allowNull: true },
     detail: { type: DataTypes.TEXT, allowNull: true },
-    timestamp: { type: DataTypes.DATE, defaultValue: DataTypes.NOW }
+    timestamp: { type: DataTypes.STRING, allowNull: true }
   },
   {
     tableName: 'hot_desk_audit_logs',
@@ -123,6 +137,8 @@ ChangeRequest.hasMany(ChangeRequestApproval, { as: 'approvals', foreignKey: 'cha
 
 ChangeRequest.belongsTo(Employee, { foreignKey: 'employeeId', targetKey: 'empId', as: 'employeeRecord' });
 ChangeRequest.belongsTo(Employee, { foreignKey: 'managerId', targetKey: 'empId', as: 'managerRecord' });
+
+AuditLog.belongsTo(Employee, { foreignKey: 'actorId', targetKey: 'empId', as: 'actor' });
 
 CatalogCategory.hasMany(CatalogSubcategory, { as: 'subcategories', foreignKey: 'categoryId' });
 CatalogSubcategory.belongsTo(CatalogCategory, { as: 'category', foreignKey: 'categoryId' });
@@ -227,7 +243,11 @@ export const ApprovalStage = sequelize.define(
 // never writes a bare, unexplained 1/2 -- still just data underneath, so
 // adding a new decision/stage is still only ever a migration, not a code
 // change to these maps.
-export const APPROVAL_DECISION_ID = Object.freeze({ APPROVED: 1, REJECTED: 2 });
+// PENDING (3) exists only for ChangeRequestApproval's pre-seeded voter-roster
+// rows (one per eligible Stage-2 voter at submission time, most of which stay
+// Pending forever once another voter decides first) -- Pre-Spend/Travel never
+// write a row until a real decision happens, so they never reference it.
+export const APPROVAL_DECISION_ID = Object.freeze({ APPROVED: 1, REJECTED: 2, PENDING: 3 });
 export const APPROVAL_STAGE_ID = Object.freeze({ MANAGER_REVIEW: 1, STAGE_2_REVIEW: 2 });
 
 // ---------- Approval decision ledgers (was a JSONB array on each request table) ----------
@@ -260,6 +280,8 @@ PreSpendApproval.belongsTo(Employee, { foreignKey: 'deciderId', targetKey: 'empI
 PreSpendApproval.belongsTo(Role, { foreignKey: 'deciderRoleId', as: 'deciderRoleRecord' });
 PreSpendApproval.belongsTo(ApprovalDecision, { foreignKey: 'decisionId', as: 'decisionRecord' });
 PreSpendApproval.belongsTo(ApprovalStage, { foreignKey: 'stageId', as: 'stageRecord' });
+
+ChangeRequestApproval.belongsTo(ApprovalDecision, { foreignKey: 'decisionId', as: 'decisionRecord' });
 
 export const TravelApproval = sequelize.define(
   'TravelApproval',

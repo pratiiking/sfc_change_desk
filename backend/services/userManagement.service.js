@@ -453,9 +453,8 @@ export const updateSettingsUserService = async (userKey, payload = {}, meta = {}
 
   const name = [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email;
   const roleName = normalizeRole(user.roleId)?.roleName || 'Requester';
-  const actorStr = meta.actorId ? String(meta.actorId) : 'SYSTEM';
   await addAuditLog({
-    actorId: actorStr,
+    actorId: meta.actorEmpId || null,
     action: 'User Role Updated',
     ref: String(user.id),
     detail: `Updated role to ${roleName} for ${name} (${user.email}).`
@@ -528,9 +527,8 @@ export const createSettingsUserService = async (payload = {}, meta = {}) => {
     }
   }
 
-  const actorStr = meta.actorId ? String(meta.actorId) : 'SYSTEM';
   await addAuditLog({
-    actorId: actorStr,
+    actorId: meta.actorEmpId || null,
     action: 'User Invited / Added',
     ref: String(user.id),
     detail: `Invited ${displayName} (${email}) with role: ${primaryRole.roleName}.`
@@ -576,9 +574,8 @@ export const deleteSettingsUserService = async (userKey, meta = {}) => {
     updateChangeImplementerCategoriesService(user.id, [])
   ]);
 
-  const actorStr = meta.actorId ? String(meta.actorId) : 'SYSTEM';
   await addAuditLog({
-    actorId: actorStr,
+    actorId: meta.actorEmpId || null,
     action: 'User Deactivated',
     ref: String(user.id),
     detail: `Deactivated user ${name} (${user.email}) and revoked all privileged roles.`
@@ -625,7 +622,7 @@ export const updateRolePermissionsService = async (roleId, permissions = [], act
   await role.save();
 
   await addAuditLog({
-    actorId: actorId || 'SYSTEM',
+    actorId: actorId || null,
     action: 'Role Permissions Updated',
     ref: roleId,
     detail: `Updated permissions for role ${role.name}.`

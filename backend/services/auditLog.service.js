@@ -1,12 +1,14 @@
 import { Op } from 'sequelize';
-import { formatTimestamp } from '../data/store.js';
 import { AuditLog } from '../models/index.js';
 import { IdentityResolver } from './identityResolver.service.js';
 import { serializeAuditLog } from '../utils/serializers.js';
 
+// `timestamp` is a legacy column, intentionally left unwritten -- see the
+// comment on the AuditLog model. createdAt (set automatically) is the real
+// source of truth, and every reader already falls back to it.
 export const addAuditLog = async ({ actorId = null, action, ref = '—', detail = '' }, tx) => {
   return AuditLog.create(
-    { timestamp: formatTimestamp(), actorId, action, ref, detail },
+    { actorId, action, ref, detail },
     { transaction: tx }
   );
 };

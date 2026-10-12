@@ -17,10 +17,10 @@ export const ChangeRequestApproval = sequelize.define(
       type: DataTypes.STRING,
       allowNull: false
     },
-    decision: {
-      type: DataTypes.ENUM('Pending', 'Approved', 'Rejected', 'Moot'),
-      defaultValue: 'Pending',
-      allowNull: false
+    decisionId: {
+      type: DataTypes.SMALLINT,
+      allowNull: false,
+      field: 'decision_id'
     },
     decidedAt: {
       type: DataTypes.DATE,
@@ -32,9 +32,9 @@ export const ChangeRequestApproval = sequelize.define(
     timestamps: true,
     indexes: [
       { unique: true, fields: ['change_request_id', 'approver_id'] },
-      { fields: ['change_request_id', 'decision'] },
+      { fields: ['change_request_id', 'decision_id'] },
       // Used by the paged worklist when retrieving an approver's decisions.
-      { fields: ['approver_id', 'change_request_id', 'decision'] }
+      { fields: ['approver_id', 'change_request_id', 'decision_id'] }
     ]
   }
 );

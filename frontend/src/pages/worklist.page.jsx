@@ -8,6 +8,7 @@ import FilterBar, { initCustomDateRange } from '../components/ui/filterBar.compo
 import ModuleSwitcher from '../components/ui/moduleSwitcher.component';
 import { Pagination, LoadingSpinner, CommentPopupModal } from '../components/ui/primitives.component';
 import { apiFetch } from '../lib/apiFetch.lib';
+import { formatDateDisplay } from '../utils/dateFormat.js';
 import { useWorklistActionableDots } from '../queries/worklist.queries';
 import { getAllowedWorklistModules, ROLE } from '../lib/permissions.lib';
 
@@ -551,7 +552,7 @@ function MyWorklistPage({ onNavigate, searchQuery = '', user, isOrgWorklist = fa
                       </td>
                       {activeModule === 'travel' && (
                         <td className="whitespace-nowrap px-[1.1rem] py-4 text-muted-foreground [font-family:var(--font-mono)]">
-                          {item.departureDate ? new Date(item.departureDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
+                          {item.departureDate ? formatDateDisplay(item.departureDate) : '—'}
                         </td>
                       )}
                       <td className="whitespace-nowrap px-[1.1rem] py-4 text-muted-foreground [font-family:var(--font-mono)]">

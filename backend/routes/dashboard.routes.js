@@ -21,6 +21,11 @@ const router = express.Router();
 router.use(authenticateUser);
 
 // Core Dashboard analytics & export
+// NOTE: /metrics, /categories, /status-breakdown are Change-Request-only by
+// design (see metrics.service.js's CANONICAL_CATEGORIES) -- they do not
+// aggregate Pre-Spend or Travel data despite the module-agnostic-sounding
+// names. A future Pre-Spend/Travel dashboard needs its own endpoint, not
+// these.
 router.get('/metrics', requireOrganizationScopeRole, getMetrics);
 router.get('/categories', requireOrganizationScopeRole, getCategories);
 router.get('/status-breakdown', requireOrganizationScopeRole, getStatusBreakdown);

@@ -35,7 +35,6 @@ const resolveEmployeeIdByEmail = async (email) => {
 
 export const createPreSpendService = async (data, user) => {
   const requestCode = await generatePreSpendCode();
-  const requesterId = user?.userKey || user?.id || user?.email || 'unknown';
 
   const requesterEmailInput = (user?.email || '').trim();
   const empRecord = requesterEmailInput
@@ -140,7 +139,7 @@ export const createPreSpendService = async (data, user) => {
   }
 
   await addAuditLog({
-    actorId: requesterId,
+    actorId: empRecord.empId,
     action: 'Created Pre-Spend Requisition',
     ref: requestCode,
     detail: `Submitted Pre-Spend requisition ${requestCode} for ${created.itemDescription || created.category} (Est. ${created.estimatedAmount || 0}) for Manager review.`
@@ -504,7 +503,6 @@ const handlePreSpendActionWithinTransaction = async ({ id, action, actionComment
 
   // req is row-locked (no include) -- resolve the employee/manager emails we
   // need for comparisons via direct lookups rather than the virtual getters.
-  const actorId = actor?.userKey || actor?.id || actor?.email || '';
   const actorEmail = (actor?.email || '').toLowerCase().trim();
   const [reqEmployeeRecord, reqManagerRecord] = await Promise.all([
     req.employeeId ? Employee.findOne({ where: { empId: req.employeeId }, attributes: ['name', 'email'] }) : null,
@@ -569,7 +567,7 @@ const handlePreSpendActionWithinTransaction = async ({ id, action, actionComment
       }).catch((err) => console.error('[mail] manager rejection notify failed:', err.message));
 
       await addAuditLog({
-        actorId: actorId || actor?.userKey || actor?.id,
+        actorId: deciderEmployeeId,
         action: 'Rejected Pre-Spend (Manager)',
         ref: req.requestCode,
         detail: `Reporting Manager rejected Pre-Spend requisition ${req.requestCode}: "${actionComment || 'No comment'}"`
@@ -594,7 +592,7 @@ const handlePreSpendActionWithinTransaction = async ({ id, action, actionComment
       }, { transaction });
 
       await addAuditLog({
-        actorId: actorId || actor?.userKey || actor?.id,
+        actorId: deciderEmployeeId,
         action: 'Approved Pre-Spend (Manager)',
         ref: req.requestCode,
         detail: `Reporting Manager approved Pre-Spend requisition ${req.requestCode} and forwarded to Board review.`
@@ -649,7 +647,7 @@ const handlePreSpendActionWithinTransaction = async ({ id, action, actionComment
   }, { transaction });
 
   await addAuditLog({
-    actorId: actorId || actor?.userKey || actor?.id,
+    actorId: deciderEmployeeId,
     action: action === 'approve' ? 'Approved Pre-Spend (Board)' : 'Rejected Pre-Spend (Board)',
     ref: req.requestCode,
     detail: `${deciderRoleLabel} ${action === 'approve' ? 'approved' : 'rejected'} Pre-Spend requisition ${req.requestCode}: "${actionComment || 'No comment'}"`

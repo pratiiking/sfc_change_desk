@@ -1,6 +1,5 @@
 import { CatalogCategory, CatalogSubcategory, CatalogSubcategoryField } from '../models/index.js';
 import { addAuditLog } from './auditLog.service.js';
-import { resolveEmailForUser, IdentityResolver } from './identityResolver.service.js';
 
 const SUBCATEGORY_ORDER_MAP = {
   // 1. Server & Infra
@@ -319,7 +318,7 @@ export const getSubcategoryFieldsService = async (subcategoryId) => {
 };
 
 export const createCatalogSubcategoryService = async (payload = {}) => {
-  const { categoryId, name, sla, risk, workflowId, description, actor } = payload;
+  const { categoryId, name, sla, risk, workflowId, description, actorEmpId } = payload;
 
   if (!categoryId || !name) {
     throw new Error('categoryId and name are required');
@@ -368,18 +367,8 @@ export const createCatalogSubcategoryService = async (payload = {}) => {
     }
   ]);
 
-  let resolvedActorId = null;
-  if (actor) {
-    if (typeof actor === 'string' && (actor.startsWith('S8-') || actor.startsWith('EMP-'))) {
-      resolvedActorId = actor;
-    } else {
-      const idRes = await IdentityResolver.resolveByEmail(actor);
-      if (idRes.status === 'SUCCESS') resolvedActorId = idRes.identity.userKey;
-    }
-  }
-
   await addAuditLog({
-    actorId: resolvedActorId || 'SYSTEM',
+    actorId: actorEmpId || null,
     action: 'Subcategory Created',
     ref: subcatId,
     detail: `Added new sub-category ${name} under category ${categoryId}.`

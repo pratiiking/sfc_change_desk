@@ -31,7 +31,7 @@ export const createCatalogSubcategory = asyncHandler(async (req, res) => {
     risk,
     workflowId,
     description,
-    actor: req.user?.name
+    actorEmpId: req.user?.employeeId
   });
 
   res.status(201).json({ success: true, message: 'Sub-category created successfully', data: subcategory });

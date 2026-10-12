@@ -23,6 +23,7 @@ import { FormLabel } from '../components/ui/primitives.component';
 import FormStepper from '../components/ui/FormStepper.component';
 import ManagerCombobox from '../components/ui/ManagerCombobox.component';
 import { apiFetch } from '../lib/apiFetch.lib';
+import { formatDateDisplay } from '../utils/dateFormat.js';
 
 const ICON_MAP = {
   Flight: Plane,
@@ -61,18 +62,6 @@ const resolveEmpLocation = (u, initialVal) => {
   if (u?.employee?.location) return u.employee.location;
   if (u?.location) return u.location;
   return '';
-};
-
-const formatDateDisplay = (dateStr) => {
-  if (!dateStr) return '';
-  const parts = String(dateStr).split('-');
-  if (parts.length === 3) {
-    const d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
-    if (!isNaN(d.getTime())) {
-      return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
-    }
-  }
-  return dateStr;
 };
 
 // Builds a clean route string across legs e.g. "Mumbai → Delhi → Bengaluru" or disconnected legs "Mumbai → Delhi | Goa → Bengaluru"

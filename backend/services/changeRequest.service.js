@@ -8,7 +8,8 @@ import {
   ChangeRequest,
   ChangeRequestApproval,
   ChangeManagerCategory,
-  ChangeImplementerCategory
+  ChangeImplementerCategory,
+  APPROVAL_DECISION_ID
 } from '../models/index.js';
 import { Employee } from '../models/Employee.js';
 import { UserS8 } from '../models/UserS8.js';
@@ -40,6 +41,14 @@ const CR_INCLUDE = [
   { model: Employee, as: 'employeeRecord' },
   { model: Employee, as: 'managerRecord' }
 ];
+
+// Reverse lookup: decisionId -> its display code, for places that want the
+// 'Pending'/'Approved'/'Rejected' string without joining ApprovalDecision.
+const DECISION_CODE_BY_ID = {
+  [APPROVAL_DECISION_ID.APPROVED]: 'Approved',
+  [APPROVAL_DECISION_ID.REJECTED]: 'Rejected',
+  [APPROVAL_DECISION_ID.PENDING]: 'Pending'
+};
 
 // The single place that answers "which employees.emp_id is this email?" --
 // used everywhere we need to know who the currently acting person is in
@@ -96,23 +105,26 @@ export const getFilteredChangeRequests = async ({
       const identityRes = await IdentityResolver.resolveByKey(actingUserId);
       const identity = identityRes.status === 'SUCCESS' ? identityRes.identity : null;
       const rolesList = identity?.rolesList || (identity?.roleId ? [identity.roleId] : []);
-      const isSuperOrAdmin = rolesList.includes(ROLE.SUPER_ADMIN) || rolesList.includes(ROLE.ADMIN_LEGACY) || rolesList.includes(ROLE.CHANGE_ADMIN) || identity?.isSuperAdmin || identity?.isChangeAdmin;
+      const isSuperOrAdmin = Array.isArray(identity?.permissions) && identity.permissions.includes('changeRequest.decide');
       const isChangeManager = rolesList.includes(ROLE.CHANGE_MANAGER) || Boolean(identity?.isChangeManager) || (identity?.cmCategories && identity.cmCategories.length > 0);
       const isChangeImplementer = rolesList.includes(ROLE.CHANGE_IMPLEMENTER) || Boolean(identity?.isChangeImplementer) || (identity?.ciCategories && identity.ciCategories.length > 0);
 
       // Rule: In My Worklist, users with assigned categories see requests belonging to their categories
       // Super Admin and Change Admin have organization-wide visibility across all categories
       if (!organizationScope && !isSuperOrAdmin) {
+        // category_role_assignments.user_id is a real INTEGER FK to
+        // hot_desk_users.id -- any non-numeric candidate here (email,
+        // "EMP-"/"S8-" prefixed strings, etc.) makes Postgres reject the
+        // whole IN-list with "invalid input syntax for type integer"
+        // instead of just not matching, so only numeric candidates may be
+        // included.
         const userAliases = Array.from(new Set([
           actingUserId,
           ...(identity?.userKey ? [identity.userKey] : []),
           ...(identity?.id ? [String(identity.id)] : []),
-          ...(identity?.email ? [identity.email.trim().toLowerCase()] : []),
-          ...(identity?.employeeBusinessId ? [identity.employeeBusinessId] : []),
-          ...(identity?.sourceId ? [`EMP-${identity.sourceId}`, `S8-${identity.sourceId}`, `usr-${identity.sourceId}`, String(identity.sourceId)] : []),
           ...(Array.isArray(identity?.aliases) ? identity.aliases : []),
           ...(typeof actingUserId === 'string' && actingUserId.includes('-') ? [actingUserId.split('-')[1]] : [])
-        ])).filter(Boolean);
+        ])).filter((v) => /^\d+$/.test(String(v)));
 
         const [cmAssignments, ciAssignments] = await Promise.all([
           ChangeManagerCategory.findAll({
@@ -268,7 +280,7 @@ export const getFilteredChangeRequests = async ({
 
   const pageRequestIds = rows.map((row) => row.id);
   const allDecidedApprovals = await ChangeRequestApproval.findAll({
-    where: { changeRequestId: { [Op.in]: pageRequestIds }, decision: { [Op.ne]: 'Pending' } }
+    where: { changeRequestId: { [Op.in]: pageRequestIds }, decisionId: { [Op.ne]: APPROVAL_DECISION_ID.PENDING } }
   });
   const uniqueApproverIds = [...new Set(allDecidedApprovals.map((a) => a.approverId).filter(Boolean))];
   const approverResults = await Promise.all(uniqueApproverIds.map(async (approverId) => [
@@ -299,7 +311,7 @@ export const getFilteredChangeRequests = async ({
     const userApprovals = await ChangeRequestApproval.findAll({
       where: { approverId: actingUserId, changeRequestId: { [Op.in]: pageRequestIds } }
     });
-    userApprovalMap = new Map(userApprovals.map((a) => [a.changeRequestId, a.decision]));
+    userApprovalMap = new Map(userApprovals.map((a) => [a.changeRequestId, DECISION_CODE_BY_ID[a.decisionId] || 'Pending']));
 
     actingUserKeys = new Set([actingUserId]);
     identityRes = await IdentityResolver.resolveByKey(actingUserId);
@@ -314,7 +326,8 @@ export const getFilteredChangeRequests = async ({
 
     const roleId = identityRes.status === 'SUCCESS' ? identityRes.identity.roleId : null;
     const roleName = String(identityRes.identity?.role || '').toLowerCase();
-    isSuperOrAdmin = roleId === ROLE.SUPER_ADMIN || roleId === ROLE.ADMIN_LEGACY || roleId === ROLE.CHANGE_ADMIN || roleName.includes('super') || roleName.includes('change desk admin') || roleName.includes('change admin') || (roleName.includes('admin') && !roleName.includes('travel') && !roleName.includes('spend'));
+    const identityPermissions = Array.isArray(identityRes.identity?.permissions) ? identityRes.identity.permissions : [];
+    isSuperOrAdmin = identityPermissions.includes('changeRequest.decide');
     isChangeManager = roleId === ROLE.CHANGE_MANAGER || roleName.includes('manager') || (identityRes.identity?.cmCategories && identityRes.identity.cmCategories.length > 0);
     isChangeImplementer = roleId === ROLE.CHANGE_IMPLEMENTER || roleName.includes('implementer') || (identityRes.identity?.ciCategories && identityRes.identity.ciCategories.length > 0);
 
@@ -435,7 +448,7 @@ export const getFilteredChangeRequests = async ({
       where: { approverId: actingUserId, changeRequestId: { [Op.in]: allRowIds } },
       raw: true
     });
-    const allUserApprovalMap = new Map(userAllApprovals.map(a => [a.changeRequestId, a.decision]));
+    const allUserApprovalMap = new Map(userAllApprovals.map(a => [a.changeRequestId, DECISION_CODE_BY_ID[a.decisionId] || 'Pending']));
 
     for (const cr of allWorklistRows) {
       const myDecision = allUserApprovalMap.get(cr.id) || 'Pending';
@@ -530,7 +543,7 @@ const createApprovalSnapshot = async (changeRequest, tx) => {
       voters.map((v) => ({
         changeRequestId: changeRequest.id,
         approverId: v.id,
-        decision: 'Pending'
+        decisionId: APPROVAL_DECISION_ID.PENDING
       })),
       { transaction: tx }
     );
@@ -649,7 +662,7 @@ export const updateDraftChangeRequestService = async (id, actorId, payload = {})
   await cr.save();
 
   await addAuditLog({
-    actorId,
+    actorId: empRecord?.empId || null,
     action: 'CR Draft Updated',
     ref: id,
     detail: `Updated draft ${id}.`
@@ -898,7 +911,7 @@ export const createChangeRequestService = async (payload = {}) => {
   await createApprovalSnapshot(createdCR);
 
   await addAuditLog({
-    actorId: requesterId,
+    actorId: requesterUser?.employeeBusinessId || null,
     action: 'Created Change Request',
     ref: id,
     detail: `Submitted ${id} ${payload.title || 'Untitled change request'} for Manager review.`
@@ -968,7 +981,7 @@ export const applyWorklistActionService = async ({ id, action, rejectionReason =
     throw err;
   }
   const rolesList = identity?.rolesList || [roleId].filter(Boolean);
-  const isAdminOrSuperAdmin = rolesList.includes(ROLE.SUPER_ADMIN) || rolesList.includes(ROLE.ADMIN_LEGACY) || rolesList.includes(ROLE.CHANGE_ADMIN) || identity?.isSuperAdmin || identity?.isChangeAdmin;
+  const isAdminOrSuperAdmin = Array.isArray(identity?.permissions) && identity.permissions.includes('changeRequest.decide');
   const isChangeManager = rolesList.includes(ROLE.CHANGE_MANAGER) || Boolean(identity?.isChangeManager) || (identity?.cmCategories && identity.cmCategories.length > 0);
   const isChangeImplementer = rolesList.includes(ROLE.CHANGE_IMPLEMENTER) || Boolean(identity?.isChangeImplementer) || (identity?.ciCategories && identity.ciCategories.length > 0);
   const cmAssignedCategoryIds = identityRes.status === 'SUCCESS' ? (identityRes.identity.cmCategories || []) : [];
@@ -978,15 +991,12 @@ export const applyWorklistActionService = async ({ id, action, rejectionReason =
     if (!canImplement && isChangeImplementer) {
       let ciAssignedIds = identity?.ciCategories || [];
       if (!ciAssignedIds || ciAssignedIds.length === 0) {
-        const assignments = await ChangeImplementerCategory.findAll({
-          where: {
-            [Op.or]: [
-              { userId: actorId },
-              ...(identity?.userKey ? [{ userId: identity.userKey }] : []),
-              ...(identity?.employeeBusinessId ? [{ userId: identity.employeeBusinessId }] : []),
-              ...(identity?.sourceId ? [{ userId: `EMP-${identity.sourceId}` }, { userId: `S8-${identity.sourceId}` }, { userId: String(identity.sourceId) }] : [])
-            ]
-          }
+        // Same INTEGER-column constraint as the userAliases lookup above --
+        // only a real numeric hot_desk_users.id may be queried here.
+        const numericCandidates = Array.from(new Set([actorId, identity?.userKey].filter(Boolean)))
+          .filter((v) => /^\d+$/.test(String(v)));
+        const assignments = numericCandidates.length === 0 ? [] : await ChangeImplementerCategory.findAll({
+          where: { userId: { [Op.in]: numericCandidates } }
         });
         ciAssignedIds = assignments.map(a => a.categoryId);
       }
@@ -1042,7 +1052,7 @@ export const applyWorklistActionService = async ({ id, action, rejectionReason =
         if (typeof cr.changed === 'function') cr.changed('customFieldValues', true);
       }
       await cr.save({ transaction: tx });
-      await addAuditLog({ actorId, action: 'CR Implemented', ref: id, detail: `Marked Change Request ${id} as Implemented. Comment: ${actionComment || 'None'}` }, tx);
+      await addAuditLog({ actorId: identity?.employeeBusinessId || null, action: 'CR Implemented', ref: id, detail: `Marked Change Request ${id} as Implemented. Comment: ${actionComment || 'None'}` }, tx);
     });
 
     ChangeRequest.findByPk(id, { include: CR_INCLUDE })
@@ -1120,7 +1130,7 @@ export const applyWorklistActionService = async ({ id, action, rejectionReason =
         await cr.save({ transaction: tx });
 
         await addAuditLog({
-          actorId,
+          actorId: identity?.employeeBusinessId || null,
           action: 'CR Rejected by Manager',
           ref: id,
           detail: `Manager ${actorName} (${identity?.email}) rejected Change Request ${id}. Reason: ${actionComment}`
@@ -1172,7 +1182,7 @@ export const applyWorklistActionService = async ({ id, action, rejectionReason =
         await cr.save({ transaction: tx });
 
         await addAuditLog({
-          actorId,
+          actorId: identity?.employeeBusinessId || null,
           action: 'CR Manager Approved',
           ref: id,
           detail: `Manager ${actorName} (${identity?.email}) approved Change Request ${id}. Comment: ${actionComment}`
@@ -1205,15 +1215,12 @@ export const applyWorklistActionService = async ({ id, action, rejectionReason =
   if (isChangeManager && !isAdminOrSuperAdmin) {
     let cmAssignedIds = cmAssignedCategoryIds;
     if (!cmAssignedIds || cmAssignedIds.length === 0) {
-      const assignments = await ChangeManagerCategory.findAll({
-        where: {
-          [Op.or]: [
-            { userId: actorId },
-            ...(identity?.userKey ? [{ userId: identity.userKey }] : []),
-            ...(identity?.employeeBusinessId ? [{ userId: identity.employeeBusinessId }] : []),
-            ...(identity?.sourceId ? [{ userId: `EMP-${identity.sourceId}` }, { userId: `S8-${identity.sourceId}` }, { userId: String(identity.sourceId) }] : [])
-          ]
-        }
+      // Same INTEGER-column constraint as the userAliases lookup above --
+      // only a real numeric hot_desk_users.id may be queried here.
+      const numericCandidates = Array.from(new Set([actorId, identity?.userKey].filter(Boolean)))
+        .filter((v) => /^\d+$/.test(String(v)));
+      const assignments = numericCandidates.length === 0 ? [] : await ChangeManagerCategory.findAll({
+        where: { userId: { [Op.in]: numericCandidates } }
       });
       cmAssignedIds = assignments.map(a => a.categoryId);
     }
@@ -1242,19 +1249,20 @@ export const applyWorklistActionService = async ({ id, action, rejectionReason =
         cr.approvalStage = APPROVAL_STAGE.DRAFT;
         await cr.save({ transaction: tx });
         await ChangeRequestApproval.destroy({ where: { changeRequestId: id }, transaction: tx });
-        await addAuditLog({ actorId, action: 'CR Sent Back', ref: id, detail: `Sent back ${id} to draft.` }, tx);
+        await addAuditLog({ actorId: identity?.employeeBusinessId || null, action: 'CR Sent Back', ref: id, detail: `Sent back ${id} to draft.` }, tx);
       }
     });
     return { id, action, status: 'Draft' };
   }
 
   const decision = action === 'approve' ? 'Approved' : 'Rejected';
+  const decisionId = action === 'approve' ? APPROVAL_DECISION_ID.APPROVED : APPROVAL_DECISION_ID.REJECTED;
   const finalStatus = decision;
 
   await sequelize.transaction(async (t) => {
     const [updatedCount] = await ChangeRequestApproval.update(
-      { decision, rationale: actionComment, decidedAt: new Date() },
-      { where: { changeRequestId: id, approverId: actorId, decision: 'Pending' }, transaction: t }
+      { decisionId, decidedAt: new Date() },
+      { where: { changeRequestId: id, approverId: actorId, decisionId: APPROVAL_DECISION_ID.PENDING }, transaction: t }
     );
 
     if (updatedCount === 0) {
@@ -1264,18 +1272,17 @@ export const applyWorklistActionService = async ({ id, action, rejectionReason =
       });
       if (!existing) {
         await ChangeRequestApproval.create(
-          { changeRequestId: id, approverId: actorId, decision, rationale: actionComment, decidedAt: new Date() },
+          { changeRequestId: id, approverId: actorId, decisionId, decidedAt: new Date() },
           { transaction: t }
         );
       } else {
-        await existing.update({ decision, rationale: actionComment, decidedAt: new Date() }, { transaction: t });
+        await existing.update({ decisionId, decidedAt: new Date() }, { transaction: t });
       }
     }
 
-    await ChangeRequestApproval.update(
-      { rationale: 'Resolved by peer approver' },
-      { where: { changeRequestId: id, decision: 'Pending', approverId: { [Op.ne]: actorId } }, transaction: t }
-    );
+    // Other still-Pending voter rows for this CR are intentionally left
+    // Pending -- this is first-decision-wins, not a quorum vote; whoever
+    // acted first above is the one decision that counts.
 
     const changeRequest = await ChangeRequest.findByPk(id, { transaction: t, lock: t.LOCK?.UPDATE });
     if (changeRequest && changeRequest.status !== 'Pending') {
@@ -1386,8 +1393,8 @@ export const addChangeRequestCommentService = async ({ id, commentText, actorId 
   const identityRes = await IdentityResolver.resolveByKey(actorId);
   const actorName = identityRes.status === 'SUCCESS' ? identityRes.identity.displayName : 'User';
   const actorRoleName = identityRes.status === 'SUCCESS' ? identityRes.identity.role : 'User';
-  const roleId = identityRes.status === 'SUCCESS' ? identityRes.identity.roleId : null;
-  const isAdminOrSuperAdmin = roleId === ROLE.SUPER_ADMIN || roleId === ROLE.ADMIN_LEGACY || roleId === ROLE.CHANGE_ADMIN;
+  const identityPermissions = identityRes.status === 'SUCCESS' && Array.isArray(identityRes.identity.permissions) ? identityRes.identity.permissions : [];
+  const isAdminOrSuperAdmin = identityPermissions.includes('changeRequest.decide');
   if (!isAdminOrSuperAdmin) {
     const err = new Error('Unauthorized: Only Admins and Super Admins can post comments.');
     err.statusCode = 403;
@@ -1421,7 +1428,7 @@ export const addChangeRequestCommentService = async ({ id, commentText, actorId 
   await cr.save();
 
   await addAuditLog({
-    actorId,
+    actorId: identityRes.status === 'SUCCESS' ? identityRes.identity.employeeBusinessId : null,
     action: 'Comment Added',
     ref: id,
     detail: `Added comment to CR ${id}: "${commentText.trim().substring(0, 50)}..."`

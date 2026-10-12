@@ -1,6 +1,7 @@
 // Turn model rows (with their includes) into the exact JSON the
 // frontend renders. All presentation fields are added here.
 import { riskStyle, statusStyle, userStatusStyle, formatDate, relativeTime } from '../data/store.js';
+import { APPROVAL_DECISION_ID } from '../models/index.js';
 
 const plain = (row) => (row && typeof row.get === 'function' ? row.get({ plain: true }) : row);
 
@@ -15,10 +16,10 @@ export const serializeChangeRequest = (row) => {
     ...rest
   } = cr;
 
-  const rejApproval = Array.isArray(approvals) ? approvals.find(a => a.decision === 'Rejected' || a.action === 'Rejected') : null;
+  const rejApproval = Array.isArray(approvals) ? approvals.find(a => a.decisionId === APPROVAL_DECISION_ID.REJECTED || a.action === 'Rejected') : null;
   const rationale = cr.rejectionReason || cr.rejection_reason || rejApproval?.rationale || rejApproval?.comments || cr.customFieldValues?.rejectionReason || (cr.status === 'Rejected' ? 'This change request was rejected during Change Manager review.' : null);
 
-  const decidedApproval = Array.isArray(approvals) ? approvals.find(a => (a.decision === 'Approved' || a.decision === 'Rejected' || a.action === 'Approved' || a.action === 'Rejected')) : null;
+  const decidedApproval = Array.isArray(approvals) ? approvals.find(a => (a.decisionId === APPROVAL_DECISION_ID.APPROVED || a.decisionId === APPROVAL_DECISION_ID.REJECTED || a.action === 'Approved' || a.action === 'Rejected')) : null;
   const decidedBy = decidedApproval?.approver?.name || cr.decidedBy || null;
   const decidedAt = decidedApproval?.decidedAt || decidedApproval?.updatedAt || null;
 
@@ -48,7 +49,7 @@ export const serializeChangeRequest = (row) => {
   const rejApproverName = rejApproval?.approver?.name || (rejApproval?.approverId ? String(rejApproval.approverId) : null);
   const rejectedBy = cr.rejectedBy || cr.customFieldValues?.rejectedBy || rejApproverName || foundRejAuthor || decidedBy || null;
 
-  const appApproval = Array.isArray(approvals) ? approvals.find(a => a.decision === 'Approved' || a.action === 'Approved') : null;
+  const appApproval = Array.isArray(approvals) ? approvals.find(a => a.decisionId === APPROVAL_DECISION_ID.APPROVED || a.action === 'Approved') : null;
   const approvedBy = cr.approvedBy || appApproval?.approver?.name || (cr.status === 'Rejected' ? rejectedBy : decidedBy) || null;
   const approvedDate = appApproval ? formatDate(new Date(appApproval.decidedAt || appApproval.updatedAt)) : (cr.status === 'Approved' || cr.status === 'Implemented' ? formatDate(new Date(decidedAt || cr.updatedAt)) : null);
   const approvedComment = cr.approvedComment || cr.approved_comment || cr.approvalRationale || cr.approval_rationale || appApproval?.rationale || appApproval?.comments || appApproval?.comment || foundAppComment || null;
@@ -122,10 +123,10 @@ export const serializeChangeRequest = (row) => {
 // Needs include: requester, approvals
 export const serializeWorklistEntry = (row) => {
   const cr = plain(row);
-  const rejApproval = Array.isArray(cr.approvals) ? cr.approvals.find(a => (a.decision === 'Rejected' || a.action === 'Rejected') && (a.rationale || a.comments)) : null;
+  const rejApproval = Array.isArray(cr.approvals) ? cr.approvals.find(a => (a.decisionId === APPROVAL_DECISION_ID.REJECTED || a.action === 'Rejected') && (a.rationale || a.comments)) : null;
   const rationale = cr.rejectionReason || cr.rejection_reason || rejApproval?.rationale || rejApproval?.comments || cr.customFieldValues?.rejectionReason || (cr.status === 'Rejected' ? 'This change request was rejected during Change Manager review.' : null);
 
-  const decidedApproval = Array.isArray(cr.approvals) ? cr.approvals.find(a => (a.decision === 'Approved' || a.decision === 'Rejected' || a.action === 'Approved' || a.action === 'Rejected')) : null;
+  const decidedApproval = Array.isArray(cr.approvals) ? cr.approvals.find(a => (a.decisionId === APPROVAL_DECISION_ID.APPROVED || a.decisionId === APPROVAL_DECISION_ID.REJECTED || a.action === 'Approved' || a.action === 'Rejected')) : null;
   const decidedBy = decidedApproval?.approver?.name || cr.decidedBy || null;
   const decidedByEmail = decidedApproval?.approver?.email || cr.decidedByEmail || null;
   const decidedAt = decidedApproval?.decidedAt || decidedApproval?.updatedAt || null;
@@ -151,7 +152,7 @@ export const serializeWorklistEntry = (row) => {
     return act === 'implemented' || act === 'implement';
   })?.text;
 
-  const appApproval = Array.isArray(cr.approvals) ? cr.approvals.find(a => a.decision === 'Approved' || a.action === 'Approved') : null;
+  const appApproval = Array.isArray(cr.approvals) ? cr.approvals.find(a => a.decisionId === APPROVAL_DECISION_ID.APPROVED || a.action === 'Approved') : null;
   const approvedBy = cr.approvedBy || appApproval?.approver?.name || decidedBy || null;
   const approvedByEmail = appApproval?.approver?.email || decidedByEmail || cr.approvedByEmail || null;
   const approvedDate = appApproval ? formatDate(new Date(appApproval.decidedAt || appApproval.updatedAt)) : (cr.status === 'Approved' || cr.status === 'Implemented' ? formatDate(new Date(decidedAt || cr.updatedAt)) : null);

@@ -60,7 +60,6 @@ const resolveEmployeeIdByEmail = async (email) => {
 
 export const createTravelService = async (data, user) => {
   const requestCode = await generateTravelCode();
-  const requesterId = user?.userKey || user?.id || user?.email || 'unknown';
   const departureDate = data.departureDate || data['Date of travel'] || data['Date of journey'] || data['Check-in date'] || null;
   const travelMode = data.travelMode || data.category || 'Flight';
   const isFlight = travelMode.toLowerCase() === 'flight' || travelMode.toLowerCase() === 'flights';
@@ -157,7 +156,7 @@ export const createTravelService = async (data, user) => {
   });
 
   await addAuditLog({
-    actorId: requesterId,
+    actorId: empRecord.empId,
     action: 'Created Travel Reservation',
     ref: requestCode,
     detail: `Submitted Travel request ${requestCode} for ${empRecord.name} (${created.travelMode}: ${created.fromLocation || 'Origin'} → ${created.toLocation || 'Destination'}) for Manager review.`
@@ -472,7 +471,6 @@ const handleTravelActionWithinTransaction = async ({ id, action, actionComment, 
 
   // req is row-locked (no include) -- resolve the employee/manager emails we
   // need for comparisons via direct lookups rather than the virtual getters.
-  const actorId = actor?.userKey || actor?.id || actor?.email || '';
   const actorEmail = (actor?.email || '').toLowerCase().trim();
   const [reqEmployeeRecord, reqManagerRecord] = await Promise.all([
     req.employeeId ? Employee.findOne({ where: { empId: req.employeeId }, attributes: ['name', 'email'] }) : null,
@@ -537,7 +535,7 @@ const handleTravelActionWithinTransaction = async ({ id, action, actionComment, 
       }).catch((err) => console.error('[mail] travel manager rejection notify failed:', err.message));
 
       await addAuditLog({
-        actorId: actorId || actor?.userKey || actor?.id,
+        actorId: deciderEmployeeId,
         action: 'Rejected Travel (Manager)',
         ref: req.requestCode,
         detail: `Reporting Manager rejected Travel request ${req.requestCode}: "${actionComment || 'No comment'}"`
@@ -562,7 +560,7 @@ const handleTravelActionWithinTransaction = async ({ id, action, actionComment, 
       }, { transaction });
 
       await addAuditLog({
-        actorId: actorId || actor?.userKey || actor?.id,
+        actorId: deciderEmployeeId,
         action: 'Approved Travel (Manager)',
         ref: req.requestCode,
         detail: `Reporting Manager approved Travel request ${req.requestCode} and forwarded to Travel Desk.`
@@ -616,7 +614,7 @@ const handleTravelActionWithinTransaction = async ({ id, action, actionComment, 
   }, { transaction });
 
   await addAuditLog({
-    actorId: actorId || actor?.userKey || actor?.id,
+    actorId: deciderEmployeeId,
     action: action === 'approve' ? 'Approved Travel' : 'Rejected Travel',
     ref: req.requestCode,
     detail: `${deciderRoleLabel} ${action === 'approve' ? 'approved' : 'rejected'} Travel request ${req.requestCode}: "${actionComment || 'No comment'}"`
